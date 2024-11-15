@@ -14,12 +14,14 @@ var rootCmd = &cobra.Command{
 	Short: "Validate Helm values using CEL expressions",
 	Long: `A Helm plugin to validate values.yaml using CEL expressions defined in values.cel.yaml.
 Example: helm cel ./mychart`,
-	RunE: runCelValidation,
+	RunE:          runCelValidation,
+	SilenceErrors: true,
+	SilenceUsage:  true,
 }
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -35,9 +37,10 @@ func runCelValidation(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get absolute path: %v", err)
 	}
 
-	validator := validator.New()
-	if err := validator.ValidateChart(absPath); err != nil {
-		return fmt.Errorf("validation failed: %v", err)
+	v := validator.New()
+	if err := v.ValidateChart(absPath); err != nil {
+		// Return the error directly without wrapping it
+		return err
 	}
 
 	fmt.Println("✅ Values validation successful!")
