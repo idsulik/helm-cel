@@ -1,0 +1,25 @@
+name: "cel"
+version: "0.1.0"
+usage: "Validate Helm values using CEL expressions"
+description: |-
+  A Helm plugin to validate values.yaml using CEL expressions defined in values.cel.yaml.
+  This plugin allows using CEL instead of JSON Schema for validating values.
+command: "$HELM_PLUGIN_DIR/bin/helm-cel"
+hooks:
+  install: "cd $HELM_PLUGIN_DIR && scripts/install.sh"
+platformCommand:
+  - os: linux
+    arch: amd64
+    command: "$HELM_PLUGIN_DIR/bin/helm-cel"
+  - os: linux
+    arch: arm64
+    command: "$HELM_PLUGIN_DIR/bin/helm-cel"
+  - os: darwin
+    arch: amd64
+    command: "$HELM_PLUGIN_DIR/bin/helm-cel"
+  - os: darwin
+    arch: arm64
+    command: "$HELM_PLUGIN_DIR/bin/helm-cel"
+  - os: windows
+    arch: amd64
+    command: "$HELM_PLUGIN_DIR/bin/helm-cel.exe"
