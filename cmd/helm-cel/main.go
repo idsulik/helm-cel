@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	validator "github.com/idsulik/helm-cel/pkg/validation"
+	validator "github.com/idsulik/helm-cel/pkg/validator"
 	"github.com/spf13/cobra"
 )
 
