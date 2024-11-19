@@ -1,3 +1,11 @@
+[![License](https://img.shields.io/github/license/idsulik/helm-cel.svg)](https://github.com/idsulik/helm-cel/blob/main/LICENSE)
+[![Current Release](https://img.shields.io/github/release/idsulik/helm-cel.svg?logo=github)](https://github.com/idsulik/helm-cel/releases/latest)
+[![GitHub Repo stars](https://img.shields.io/github/stars/idsulik/helm-cel?style=flat&logo=github)](https://github.com/idsulik/helm-cel/stargazers)
+[![GitHub all releases](https://img.shields.io/github/downloads/idsulik/helm-cel/total?logo=github)](https://github.com/idsulik/helm-cel/releases/latest)
+[![GitHub issues](https://img.shields.io/github/issues/idsulik/helm-cel.svg)](https://github.com/idsulik/helm-cel/issues)
+[![GitHub pull requests](https://img.shields.io/github/issues-pr/idsulik/helm-cel.svg)](https://github.com/idsulik/helm-cel/pulls)
+[![codecov](https://codecov.io/gh/idsulik/helm-cel/branch/main/graph/badge.svg?token=4qAukyB2yX)](https://codecov.io/gh/idsulik/helm-cel)
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/cel)](https://artifacthub.io/packages/helm-plugin/cel/cel)
 # Helm CEL Plugin
 
 A Helm plugin that uses Common Expression Language (CEL) to validate values. Instead of using JSON Schema in `values.schema.json`, you can write more expressive validation rules using CEL in `values.cel.yaml`.
