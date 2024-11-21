@@ -116,6 +116,50 @@ rules:
 	}
 }
 
+func TestValidator_ValidateChart_NoValues(t *testing.T) {
+	tempDir := t.TempDir()
+
+	v := New()
+	err := v.ValidateChart(tempDir)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read values.yaml")
+}
+
+func TestValidator_ValidateChart_InvalidValues(t *testing.T) {
+	tempDir := t.TempDir()
+	require.NoError(t, writeFile(t, tempDir, "values.yaml", "blah"))
+
+	v := New()
+	err := v.ValidateChart(tempDir)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse values.yaml")
+}
+
+func TestValidator_ValidateChart_NoRules(t *testing.T) {
+	tempDir := t.TempDir()
+	require.NoError(t, writeFile(t, tempDir, "values.yaml", ""))
+
+	v := New()
+	err := v.ValidateChart(tempDir)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to read values.cel.yaml")
+}
+
+func TestValidator_ValidateChart_InvalidRules(t *testing.T) {
+	tempDir := t.TempDir()
+	require.NoError(t, writeFile(t, tempDir, "values.yaml", ""))
+	require.NoError(t, writeFile(t, tempDir, "values.cel.yaml", "blah"))
+
+	v := New()
+	err := v.ValidateChart(tempDir)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse values.cel.yaml")
+}
+
 func TestValidator_ExtractPath(t *testing.T) {
 	tests := []struct {
 		name     string
