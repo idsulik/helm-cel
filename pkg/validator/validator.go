@@ -66,7 +66,7 @@ func (v *Validator) loadValues(chartPath string) (map[string]interface{}, error)
 		return nil, fmt.Errorf("failed to read values.yaml: %v", err)
 	}
 
-	var values map[string]interface{}
+	values := make(map[string]interface{})
 	if err := yaml.Unmarshal(valuesContent, &values); err != nil {
 		return nil, fmt.Errorf("failed to parse values.yaml: %v", err)
 	}
@@ -106,6 +106,8 @@ func (e *ValidationError) Error() string {
 	}
 	if e.Value != nil {
 		msg.WriteString(fmt.Sprintf("   Current value: %v", e.Value))
+	} else {
+		msg.WriteString("   Current value: <nil>")
 	}
 	return msg.String()
 }

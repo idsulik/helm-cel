@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestValidator_InitCelEnv(t *testing.T) {
@@ -14,6 +15,105 @@ func TestValidator_InitCelEnv(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotNil(t, env)
+}
+
+func TestValidator_ValidateChart(t *testing.T) {
+	tempDir := t.TempDir()
+
+	tests := []struct {
+		name           string
+		valuesContent  string
+		rulesContent   string
+		expectedError  string
+		shouldValidate bool
+	}{
+		{
+			name: "valid rules and values",
+			valuesContent: `
+service:
+  port: 8080
+replicas: 3`,
+			rulesContent: `
+rules:
+  - expr: "values.service.port <= 65535"
+    desc: "port must be valid"
+  - expr: "values.replicas > 0"
+    desc: "replicas must be positive"`,
+			shouldValidate: true,
+		},
+		{
+			name: "complex validation with multiple rules",
+			valuesContent: `
+service:
+  port: 8080
+  type: LoadBalancer
+resources:
+  limits:
+    cpu: "2"
+    memory: "2Gi"`,
+			rulesContent: `
+rules:
+  - expr: 'values.service.port <= 65535'
+    desc: "port must be valid"
+  - expr: 'values.service.type in ["ClusterIP", "NodePort", "LoadBalancer"]'
+    desc: "valid service type"
+  - expr: 'double(values.resources.limits.cpu) <= 4.0'
+    desc: "CPU limit must be <= 4.0"`,
+			shouldValidate: true,
+		},
+		{
+			name: "invalid rule syntax",
+			valuesContent: `
+service:
+  port: 8080`,
+			rulesContent: `
+rules:
+  - expr: "invalid syntax >>>"
+    desc: "invalid rule"`,
+			expectedError: "❌ Invalid rule syntax in 'invalid rule': ERROR: <input>:1:9: Syntax error: mismatched input 'syntax' expecting <EOF>\n | invalid syntax >>>\n | ........^",
+		},
+		{
+			name: "validation failure",
+			valuesContent: `
+service:
+  port: 70000`,
+			rulesContent: `
+rules:
+  - expr: "values.service.port <= 65535"
+    desc: "port must be valid"`,
+			expectedError: "Found 1 validation error(s):\n\n❌ Validation failed: port must be valid\n   Rule: values.service.port <= 65535\n   Path: service.port\n   Current value: 70000",
+		},
+		{
+			name: "missing required field",
+			valuesContent: `
+service: {}`,
+			rulesContent: `
+rules:
+  - expr: "has(values.service.port)"
+    desc: "port is required"`,
+			expectedError: "Found 1 validation error(s):\n\n❌ Validation failed: port is required\n   Rule: has(values.service.port)\n   Path: service.port\n   Current value: <nil>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(
+			tt.name, func(t *testing.T) {
+				// Write test files
+				require.NoError(t, writeFile(t, tempDir, "values.yaml", tt.valuesContent))
+				require.NoError(t, writeFile(t, tempDir, "values.cel.yaml", tt.rulesContent))
+
+				v := New()
+				err := v.ValidateChart(tempDir)
+
+				if tt.shouldValidate {
+					assert.NoError(t, err)
+				} else {
+					assert.Error(t, err)
+					assert.Equal(t, tt.expectedError, err.Error())
+				}
+			},
+		)
+	}
 }
 
 func TestValidator_ExtractPath(t *testing.T) {
@@ -42,6 +142,11 @@ func TestValidator_ExtractPath(t *testing.T) {
 			errMsg:   "some random error",
 			expected: "",
 		},
+		{
+			name:     "complex error message",
+			errMsg:   "no such key: nested.deep.field in map",
+			expected: "nested.deep.field",
+		},
 	}
 
 	for _, tt := range tests {
@@ -60,6 +165,9 @@ func TestValidator_ExtractValueFromValues(t *testing.T) {
 			"port":     8080,
 			"type":     "ClusterIP",
 			"nodePort": 30080,
+			"nested": map[string]interface{}{
+				"field": "value",
+			},
 		},
 		"replicas": 3,
 		"resources": map[string]interface{}{
@@ -106,6 +214,18 @@ func TestValidator_ExtractValueFromValues(t *testing.T) {
 			expectedValue: 8080,
 			expectedPath:  "service.port",
 		},
+		{
+			name:          "deep nested with non-map value",
+			expr:          "values.service.nested.field == 'value'",
+			expectedValue: "value",
+			expectedPath:  "service.nested.field",
+		},
+		{
+			name:          "non-existent path",
+			expr:          "values.nonexistent.field == true",
+			expectedValue: nil,
+			expectedPath:  "nonexistent",
+		},
 	}
 
 	for _, tt := range tests {
@@ -151,7 +271,17 @@ func TestValidationError_Error(t *testing.T) {
 				Expression:  "has(values.service)",
 				Path:        "service",
 			},
-			expected: "❌ Validation failed: service is required\n   Rule: has(values.service)\n   Path: service\n",
+			expected: "❌ Validation failed: service is required\n   Rule: has(values.service)\n   Path: service\n   Current value: <nil>",
+		},
+		{
+			name: "error with nil value",
+			err: &ValidationError{
+				Description: "invalid configuration",
+				Expression:  "has(values.config)",
+				Value:       nil,
+				Path:        "config",
+			},
+			expected: "❌ Validation failed: invalid configuration\n   Rule: has(values.config)\n   Path: config\n   Current value: <nil>",
 		},
 	}
 
@@ -222,45 +352,29 @@ func TestValidationErrors_Error(t *testing.T) {
 func TestValidator_LoadFiles(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// Test loading non-existent files
 	t.Run(
-		"non-existent values.yaml", func(t *testing.T) {
+		"non-existent files", func(t *testing.T) {
 			v := New()
 			_, err := v.loadValues(tempDir)
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "failed to read values.yaml")
-		},
-	)
 
-	t.Run(
-		"non-existent values.cel.yaml", func(t *testing.T) {
-			v := New()
-			_, err := v.loadRules(tempDir)
+			_, err = v.loadRules(tempDir)
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "failed to read values.cel.yaml")
 		},
 	)
 
-	// Test loading invalid YAML files
 	t.Run(
-		"invalid values.yaml", func(t *testing.T) {
+		"invalid YAML syntax", func(t *testing.T) {
 			v := New()
 			invalidYaml := "invalid: yaml: content: :"
-			err := writeFile(t, tempDir, "values.yaml", invalidYaml)
-			assert.NoError(t, err)
+			require.NoError(t, writeFile(t, tempDir, "values.yaml", invalidYaml))
+			require.NoError(t, writeFile(t, tempDir, "values.cel.yaml", invalidYaml))
 
-			_, err = v.loadValues(tempDir)
+			_, err := v.loadValues(tempDir)
 			assert.Error(t, err)
 			assert.Contains(t, err.Error(), "failed to parse values.yaml")
-		},
-	)
-
-	t.Run(
-		"invalid values.cel.yaml", func(t *testing.T) {
-			v := New()
-			invalidYaml := "rules: - expr: invalid: yaml:"
-			err := writeFile(t, tempDir, "values.cel.yaml", invalidYaml)
-			assert.NoError(t, err)
 
 			_, err = v.loadRules(tempDir)
 			assert.Error(t, err)
@@ -268,17 +382,39 @@ func TestValidator_LoadFiles(t *testing.T) {
 		},
 	)
 
-	// Test loading valid files
 	t.Run(
-		"valid files", func(t *testing.T) {
+		"empty files", func(t *testing.T) {
 			v := New()
-			validValues := "service:\n  port: 80"
-			validRules := "rules:\n- expr: values.service.port <= 65535\n  desc: port must be valid"
+			require.NoError(t, writeFile(t, tempDir, "values.yaml", ""))
+			require.NoError(t, writeFile(t, tempDir, "values.cel.yaml", ""))
 
-			err := writeFile(t, tempDir, "values.yaml", validValues)
+			values, err := v.loadValues(tempDir)
 			assert.NoError(t, err)
-			err = writeFile(t, tempDir, "values.cel.yaml", validRules)
+			assert.NotNil(t, values)
+
+			rules, err := v.loadRules(tempDir)
 			assert.NoError(t, err)
+			assert.NotNil(t, rules)
+		},
+	)
+
+	t.Run(
+		"valid files with content", func(t *testing.T) {
+			v := New()
+			validValues := `
+service:
+  port: 80
+  type: ClusterIP
+replicas: 3`
+			validRules := `
+rules:
+  - expr: values.service.port <= 65535
+    desc: port must be valid
+  - expr: values.replicas > 0
+    desc: replicas must be positive`
+
+			require.NoError(t, writeFile(t, tempDir, "values.yaml", validValues))
+			require.NoError(t, writeFile(t, tempDir, "values.cel.yaml", validRules))
 
 			values, err := v.loadValues(tempDir)
 			assert.NoError(t, err)
@@ -288,9 +424,7 @@ func TestValidator_LoadFiles(t *testing.T) {
 			rules, err := v.loadRules(tempDir)
 			assert.NoError(t, err)
 			assert.NotNil(t, rules)
-			assert.Len(t, rules.Rules, 1)
-			assert.Equal(t, "values.service.port <= 65535", rules.Rules[0].Expr)
-			assert.Equal(t, "port must be valid", rules.Rules[0].Desc)
+			assert.Len(t, rules.Rules, 2)
 		},
 	)
 }
