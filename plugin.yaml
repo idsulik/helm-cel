@@ -1,5 +1,5 @@
 name: "cel"
-version: "0.1.1"
+version: "1.0.0"
 usage: "Validate Helm values using CEL expressions"
 description: |-
   A Helm plugin to validate values.yaml using CEL expressions defined in values.cel.yaml.
