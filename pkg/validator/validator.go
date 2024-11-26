@@ -10,16 +10,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Rule represents a single CEL validation rule
-type Rule struct {
-	Expr string `yaml:"expr"`
-	Desc string `yaml:"desc"`
-}
-
-// ValidationRules contains all CEL validation rules
-type ValidationRules struct {
-	Rules []Rule `yaml:"rules"`
-}
+const (
+	// WarningSeverity represents a validation warning
+	WarningSeverity = "warning"
+)
 
 // Validator handles the validation of Helm values using CEL
 type Validator struct {
@@ -31,34 +25,102 @@ func New() *Validator {
 	return &Validator{}
 }
 
-// ValidateChart validates the values.yaml file against CEL rules in values.cel.yaml
-func (v *Validator) ValidateChart(chartPath string) error {
-	// Initialize CEL environment
+// ValidateChart validates the values.yaml file against CEL rules in values.cel.yaml.
+func (v *Validator) ValidateChart(chartPath string) (*ValidationResult, error) {
 	env, err := v.initCelEnv()
 	if err != nil {
-		return fmt.Errorf("failed to initialize CEL environment: %v", err)
+		return nil, fmt.Errorf("failed to initialize CEL environment: %v", err)
 	}
 
 	v.env = env
 	values, err := v.loadValues(chartPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	rules, err := v.loadRules(chartPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return v.validateRules(values, rules)
+	// Prepare named expressions
+	if err := v.prepareNamedExpressions(rules); err != nil {
+		return nil, err
+	}
+
+	return v.validateRules(values, rules), nil
 }
 
+// prepareNamedExpressions expands all named expressions in validation rules
+func (v *Validator) prepareNamedExpressions(rules *ValidationRules) error {
+	if rules.Expressions == nil {
+		rules.Expressions = make(map[string]string)
+	}
+
+	for i, rule := range rules.Rules {
+		expandedExpr, err := v.expandExpression(rule.Expr, rules.Expressions)
+		if err != nil {
+			return fmt.Errorf("failed to expand rule '%s': %v", rule.Desc, err)
+		}
+		rules.Rules[i].Expr = expandedExpr
+	}
+
+	return nil
+}
+
+// expandExpression expands a single expression by replacing named expression references
+func (v *Validator) expandExpression(expr string, expressions map[string]string) (string, error) {
+	if expressions == nil {
+		expressions = make(map[string]string)
+	}
+
+	result := expr
+	processedRefs := make(map[string]bool)
+
+	// Try maximum number of iterations based on number of expressions
+	maxIterations := len(expressions) + 1
+	iteration := 0
+
+	for strings.Contains(result, "${") && iteration < maxIterations {
+		iteration++
+		foundReplacement := false
+
+		for name, namedExpr := range expressions {
+			placeholder := "${" + name + "}"
+
+			// Skip if we've already processed this reference in a previous iteration
+			if strings.Contains(result, placeholder) {
+				foundReplacement = true
+				if processedRefs[name] {
+					return "", fmt.Errorf("circular reference detected in expression: %s", expr)
+				}
+				processedRefs[name] = true
+				result = strings.ReplaceAll(result, placeholder, "("+namedExpr+")")
+			}
+		}
+
+		// If no replacements were made in this iteration, we have unresolvable references
+		if !foundReplacement {
+			return "", fmt.Errorf("undefined reference in expression: %s", expr)
+		}
+	}
+
+	// If we still have references after max iterations, we have a circular reference
+	if strings.Contains(result, "${") {
+		return "", fmt.Errorf("circular reference detected in expression: %s", expr)
+	}
+
+	return result, nil
+}
+
+// initCelEnv initializes the CEL environment with required variables and functions
 func (v *Validator) initCelEnv() (*cel.Env, error) {
 	return cel.NewEnv(
 		cel.Variable("values", cel.DynType),
 	)
 }
 
+// loadValues reads and parses the values.yaml file from the chart path
 func (v *Validator) loadValues(chartPath string) (map[string]interface{}, error) {
 	valuesPath := filepath.Join(chartPath, "values.yaml")
 	valuesContent, err := os.ReadFile(valuesPath)
@@ -74,6 +136,7 @@ func (v *Validator) loadValues(chartPath string) (map[string]interface{}, error)
 	return values, nil
 }
 
+// loadRules reads and parses the values.cel.yaml file containing validation rules
 func (v *Validator) loadRules(chartPath string) (*ValidationRules, error) {
 	rulesPath := filepath.Join(chartPath, "values.cel.yaml")
 	rulesContent, err := os.ReadFile(rulesPath)
@@ -89,62 +152,34 @@ func (v *Validator) loadRules(chartPath string) (*ValidationRules, error) {
 	return &rules, nil
 }
 
-// ValidationError represents a validation failure
-type ValidationError struct {
-	Description string
-	Expression  string
-	Value       interface{}
-	Path        string
-}
-
-func (e *ValidationError) Error() string {
-	var msg strings.Builder
-	msg.WriteString(fmt.Sprintf("❌ Validation failed: %s\n", e.Description))
-	msg.WriteString(fmt.Sprintf("   Rule: %s\n", e.Expression))
-	if e.Path != "" {
-		msg.WriteString(fmt.Sprintf("   Path: %s\n", e.Path))
+// validateRules validates values against all rules and returns the validation result
+func (v *Validator) validateRules(values map[string]interface{}, rules *ValidationRules) *ValidationResult {
+	result := &ValidationResult{
+		Errors:   make([]*ValidationError, 0),
+		Warnings: make([]*ValidationError, 0),
 	}
-	if e.Value != nil {
-		msg.WriteString(fmt.Sprintf("   Current value: %v", e.Value))
-	} else {
-		msg.WriteString("   Current value: <nil>")
-	}
-	return msg.String()
-}
-
-// ValidationErrors holds multiple validation errors
-type ValidationErrors struct {
-	Errors []*ValidationError
-}
-
-func (ve *ValidationErrors) Error() string {
-	if len(ve.Errors) == 0 {
-		return ""
-	}
-
-	var msg strings.Builder
-	msg.WriteString(fmt.Sprintf("Found %d validation error(s):\n\n", len(ve.Errors)))
-	for i, err := range ve.Errors {
-		msg.WriteString(err.Error())
-		if i < len(ve.Errors)-1 {
-			msg.WriteString("\n\n")
-		}
-	}
-	return msg.String()
-}
-
-func (v *Validator) validateRules(values map[string]interface{}, rules *ValidationRules) error {
-	var validationErrors ValidationErrors
 
 	for _, rule := range rules.Rules {
 		ast, issues := v.env.Compile(rule.Expr)
 		if issues != nil && issues.Err() != nil {
-			return fmt.Errorf("❌ Invalid rule syntax in '%s': %v", rule.Desc, issues.Err())
+			result.Errors = append(
+				result.Errors, &ValidationError{
+					Description: fmt.Sprintf("Invalid rule syntax in '%s': %v", rule.Desc, issues.Err()),
+					Expression:  rule.Expr,
+				},
+			)
+			continue
 		}
 
 		program, err := v.env.Program(ast)
 		if err != nil {
-			return fmt.Errorf("❌ Failed to process rule '%s': %v", rule.Desc, err)
+			result.Errors = append(
+				result.Errors, &ValidationError{
+					Description: fmt.Sprintf("Failed to process rule '%s': %v", rule.Desc, err),
+					Expression:  rule.Expr,
+				},
+			)
+			continue
 		}
 
 		out, _, err := program.Eval(
@@ -152,41 +187,39 @@ func (v *Validator) validateRules(values map[string]interface{}, rules *Validati
 				"values": values,
 			},
 		)
+
+		validationError := &ValidationError{
+			Description: rule.Desc,
+			Expression:  rule.Expr,
+		}
+
 		if err != nil {
-			// Handle evaluation errors more gracefully
-			validationErrors.Errors = append(
-				validationErrors.Errors, &ValidationError{
-					Description: rule.Desc,
-					Expression:  rule.Expr,
-					Path:        extractPath(err.Error()),
-				},
-			)
+			validationError.Path = extractPath(err.Error())
+			if rule.Severity == WarningSeverity {
+				result.Warnings = append(result.Warnings, validationError)
+			} else {
+				result.Errors = append(result.Errors, validationError)
+			}
 			continue
 		}
 
 		if out.Value() != true {
-			// Try to extract relevant value based on the expression
 			value, path := extractValueFromValues(values, rule.Expr)
-			validationErrors.Errors = append(
-				validationErrors.Errors, &ValidationError{
-					Description: rule.Desc,
-					Expression:  rule.Expr,
-					Value:       value,
-					Path:        path,
-				},
-			)
+			validationError.Value = value
+			validationError.Path = path
+			if rule.Severity == WarningSeverity {
+				result.Warnings = append(result.Warnings, validationError)
+			} else {
+				result.Errors = append(result.Errors, validationError)
+			}
 		}
 	}
 
-	if len(validationErrors.Errors) > 0 {
-		return &validationErrors
-	}
-	return nil
+	return result
 }
 
-// extractPath tries to extract the path from a CEL error message
+// extractPath extracts the path from a CEL error message
 func extractPath(errMsg string) string {
-	// Common patterns in CEL error messages
 	patterns := []string{
 		"no such key: ",
 		"undefined field '",
@@ -206,9 +239,8 @@ func extractPath(errMsg string) string {
 	return ""
 }
 
-// extractValueFromValues tries to extract the relevant value based on the CEL expression
+// extractValueFromValues extracts the relevant value from the values map based on the CEL expression
 func extractValueFromValues(values map[string]interface{}, expr string) (interface{}, string) {
-	// Extract path from expression (this is a simple example, might need to be more sophisticated)
 	parts := strings.Split(expr, "values.")
 	if len(parts) < 2 {
 		return nil, ""

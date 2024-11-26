@@ -70,7 +70,7 @@ service:
 rules:
   - expr: "invalid syntax >>>"
     desc: "invalid rule"`,
-			expectedError: "❌ Invalid rule syntax in 'invalid rule': ERROR: <input>:1:9: Syntax error: mismatched input 'syntax' expecting <EOF>\n | invalid syntax >>>\n | ........^",
+			expectedError: "Found 1 error(s):\n\n❌ Invalid rule syntax in 'invalid rule': ERROR: <input>:1:9: Syntax error: mismatched input 'syntax' expecting <EOF>\n | invalid syntax >>>\n | ........^\n   Rule: invalid syntax >>>\n   Current value: <nil>",
 		},
 		{
 			name: "validation failure",
@@ -81,7 +81,7 @@ service:
 rules:
   - expr: "values.service.port <= 65535"
     desc: "port must be valid"`,
-			expectedError: "Found 1 validation error(s):\n\n❌ Validation failed: port must be valid\n   Rule: values.service.port <= 65535\n   Path: service.port\n   Current value: 70000",
+			expectedError: "Found 1 error(s):\n\n❌ port must be valid\n   Rule: values.service.port <= 65535\n   Path: service.port\n   Current value: 70000",
 		},
 		{
 			name: "missing required field",
@@ -91,7 +91,7 @@ service: {}`,
 rules:
   - expr: "has(values.service.port)"
     desc: "port is required"`,
-			expectedError: "Found 1 validation error(s):\n\n❌ Validation failed: port is required\n   Rule: has(values.service.port)\n   Path: service.port\n   Current value: <nil>",
+			expectedError: "Found 1 error(s):\n\n❌ port is required\n   Rule: has(values.service.port)\n   Path: service.port\n   Current value: <nil>",
 		},
 	}
 
@@ -103,13 +103,13 @@ rules:
 				require.NoError(t, writeFile(t, tempDir, "values.cel.yaml", tt.rulesContent))
 
 				v := New()
-				err := v.ValidateChart(tempDir)
+				res, _ := v.ValidateChart(tempDir)
 
 				if tt.shouldValidate {
-					assert.NoError(t, err)
+					assert.False(t, res.HasErrors())
 				} else {
-					assert.Error(t, err)
-					assert.Equal(t, tt.expectedError, err.Error())
+					assert.True(t, res.HasErrors())
+					assert.Equal(t, tt.expectedError, res.Error())
 				}
 			},
 		)
@@ -120,7 +120,7 @@ func TestValidator_ValidateChart_NoValues(t *testing.T) {
 	tempDir := t.TempDir()
 
 	v := New()
-	err := v.ValidateChart(tempDir)
+	_, err := v.ValidateChart(tempDir)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read values.yaml")
@@ -131,7 +131,7 @@ func TestValidator_ValidateChart_InvalidValues(t *testing.T) {
 	require.NoError(t, writeFile(t, tempDir, "values.yaml", "blah"))
 
 	v := New()
-	err := v.ValidateChart(tempDir)
+	_, err := v.ValidateChart(tempDir)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse values.yaml")
@@ -142,7 +142,7 @@ func TestValidator_ValidateChart_NoRules(t *testing.T) {
 	require.NoError(t, writeFile(t, tempDir, "values.yaml", ""))
 
 	v := New()
-	err := v.ValidateChart(tempDir)
+	_, err := v.ValidateChart(tempDir)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read values.cel.yaml")
@@ -154,10 +154,165 @@ func TestValidator_ValidateChart_InvalidRules(t *testing.T) {
 	require.NoError(t, writeFile(t, tempDir, "values.cel.yaml", "blah"))
 
 	v := New()
-	err := v.ValidateChart(tempDir)
+	_, err := v.ValidateChart(tempDir)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse values.cel.yaml")
+}
+
+func TestValidator_expandExpression(t *testing.T) {
+	tests := []struct {
+		name        string
+		expr        string
+		expressions map[string]string
+		want        string
+		wantErr     string
+	}{
+		{
+			name: "simple expression without references",
+			expr: "values.service.port <= 65535",
+			expressions: map[string]string{
+				"validPort": "port > 0",
+			},
+			want: "values.service.port <= 65535",
+		},
+		{
+			name: "single reference",
+			expr: "${validPort}",
+			expressions: map[string]string{
+				"validPort": "values.service.port <= 65535",
+			},
+			want: "(values.service.port <= 65535)",
+		},
+		{
+			name: "multiple references",
+			expr: "${validPort} && ${validType}",
+			expressions: map[string]string{
+				"validPort": "values.service.port <= 65535",
+				"validType": "values.service.type in ['ClusterIP', 'NodePort']",
+			},
+			want: "(values.service.port <= 65535) && (values.service.type in ['ClusterIP', 'NodePort'])",
+		},
+		{
+			name: "nested references",
+			expr: "${validateService}",
+			expressions: map[string]string{
+				"validPort":       "values.service.port <= 65535",
+				"validType":       "values.service.type in ['ClusterIP', 'NodePort']",
+				"validateService": "${validPort} && ${validType}",
+			},
+			want: "((values.service.port <= 65535) && (values.service.type in ['ClusterIP', 'NodePort']))",
+		},
+		{
+			name: "multiple nested references",
+			expr: "${validateAll}",
+			expressions: map[string]string{
+				"validPort":       "values.service.port <= 65535",
+				"validType":       "values.service.type in ['ClusterIP', 'NodePort']",
+				"validateService": "${validPort} && ${validType}",
+				"validateAll":     "${validateService} && has(values.replicas)",
+			},
+			want: "(((values.service.port <= 65535) && (values.service.type in ['ClusterIP', 'NodePort'])) && has(values.replicas))",
+		},
+		{
+			name: "reference in middle of expression",
+			expr: "has(values.service) && ${validPort} && has(values.replicas)",
+			expressions: map[string]string{
+				"validPort": "values.service.port <= 65535",
+			},
+			want: "has(values.service) && (values.service.port <= 65535) && has(values.replicas)",
+		},
+		{
+			name: "circular reference - direct",
+			expr: "${a}",
+			expressions: map[string]string{
+				"a": "${a}",
+			},
+			wantErr: "circular reference detected in expression: ${a}",
+		},
+		{
+			name: "circular reference - indirect",
+			expr: "${a}",
+			expressions: map[string]string{
+				"a": "${b}",
+				"b": "${c}",
+				"c": "${a}",
+			},
+			wantErr: "circular reference detected in expression: ${a}",
+		},
+		{
+			name: "undefined reference",
+			expr: "${undefinedRef}",
+			expressions: map[string]string{
+				"validPort": "values.service.port <= 65535",
+			},
+			wantErr: "undefined reference in expression: ${undefinedRef}",
+		},
+		{
+			name: "multiple identical references",
+			expr: "${validPort} && ${validPort}",
+			expressions: map[string]string{
+				"validPort": "values.service.port <= 65535",
+			},
+			want: "(values.service.port <= 65535) && (values.service.port <= 65535)",
+		},
+		{
+			name:        "empty expressions map",
+			expr:        "${validPort}",
+			expressions: map[string]string{},
+			wantErr:     "undefined reference in expression: ${validPort}",
+		},
+		{
+			name:        "nil expressions map",
+			expr:        "${validPort}",
+			expressions: nil,
+			wantErr:     "undefined reference in expression: ${validPort}",
+		},
+		{
+			name: "empty expression",
+			expr: "",
+			expressions: map[string]string{
+				"validPort": "values.service.port <= 65535",
+			},
+			want: "",
+		},
+		{
+			name: "malformed reference - unclosed",
+			expr: "${unclosed",
+			expressions: map[string]string{
+				"unclosed": "values.service.port <= 65535",
+			},
+			wantErr: "undefined reference in expression: ${unclosed",
+		},
+		{
+			name: "complex nested expression",
+			expr: "${validateResources}",
+			expressions: map[string]string{
+				"memoryPattern":     "matches(string(value), r\"^[0-9]+(Mi|Gi)$\")",
+				"cpuPattern":        "matches(string(value), r\"^[0-9]+m$\")",
+				"validateResources": "has(values.resources.requests) && has(values.resources.limits) && ${memoryPattern} && ${cpuPattern}",
+			},
+			want: "(has(values.resources.requests) && has(values.resources.limits) && (matches(string(value), r\"^[0-9]+(Mi|Gi)$\")) && (matches(string(value), r\"^[0-9]+m$\")))",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(
+			tt.name, func(t *testing.T) {
+				v := New()
+				got, err := v.expandExpression(tt.expr, tt.expressions)
+
+				if tt.wantErr != "" {
+					assert.Error(t, err)
+					assert.Equal(t, tt.wantErr, err.Error())
+					return
+				}
+
+				assert.NoError(t, err)
+				assert.Equal(t, tt.want, got)
+			},
+		)
+	}
 }
 
 func TestValidator_ExtractPath(t *testing.T) {
@@ -297,7 +452,7 @@ func TestValidationError_Error(t *testing.T) {
 				Value:       70000,
 				Path:        "service.port",
 			},
-			expected: "❌ Validation failed: port must be valid\n   Rule: values.service.port <= 65535\n   Path: service.port\n   Current value: 70000",
+			expected: "❌ port must be valid\n   Rule: values.service.port <= 65535\n   Path: service.port\n   Current value: 70000",
 		},
 		{
 			name: "error without path",
@@ -306,7 +461,7 @@ func TestValidationError_Error(t *testing.T) {
 				Expression:  "values.replicas > 0",
 				Value:       0,
 			},
-			expected: "❌ Validation failed: replicas must be positive\n   Rule: values.replicas > 0\n   Current value: 0",
+			expected: "❌ replicas must be positive\n   Rule: values.replicas > 0\n   Current value: 0",
 		},
 		{
 			name: "error without value",
@@ -315,7 +470,7 @@ func TestValidationError_Error(t *testing.T) {
 				Expression:  "has(values.service)",
 				Path:        "service",
 			},
-			expected: "❌ Validation failed: service is required\n   Rule: has(values.service)\n   Path: service\n   Current value: <nil>",
+			expected: "❌ service is required\n   Rule: has(values.service)\n   Path: service\n   Current value: <nil>",
 		},
 		{
 			name: "error with nil value",
@@ -325,7 +480,7 @@ func TestValidationError_Error(t *testing.T) {
 				Value:       nil,
 				Path:        "config",
 			},
-			expected: "❌ Validation failed: invalid configuration\n   Rule: has(values.config)\n   Path: config\n   Current value: <nil>",
+			expected: "❌ invalid configuration\n   Rule: has(values.config)\n   Path: config\n   Current value: <nil>",
 		},
 	}
 
@@ -339,54 +494,57 @@ func TestValidationError_Error(t *testing.T) {
 	}
 }
 
-func TestValidationErrors_Error(t *testing.T) {
+func TestValidationResult_Error(t *testing.T) {
 	tests := []struct {
 		name     string
-		errors   []*ValidationError
+		result   *ValidationResult
 		expected string
 	}{
 		{
-			name:     "no errors",
-			errors:   []*ValidationError{},
-			expected: "",
-		},
-		{
-			name: "single error",
-			errors: []*ValidationError{
-				{
-					Description: "port must be valid",
-					Expression:  "values.service.port <= 65535",
-					Value:       70000,
-					Path:        "service.port",
+			name: "errors and warnings",
+			result: &ValidationResult{
+				Errors: []*ValidationError{
+					{
+						Description: "port must be valid",
+						Expression:  "values.service.port <= 65535",
+						Value:       70000,
+						Path:        "service.port",
+					},
+				},
+				Warnings: []*ValidationError{
+					{
+						Description: "resources should be specified",
+						Expression:  "has(values.resources)",
+						Path:        "resources",
+					},
 				},
 			},
-			expected: "Found 1 validation error(s):\n\n❌ Validation failed: port must be valid\n   Rule: values.service.port <= 65535\n   Path: service.port\n   Current value: 70000",
+			expected: "Found 1 error(s):\n\n❌ port must be valid\n   Rule: values.service.port <= 65535\n   Path: service.port\n   Current value: 70000\n\nFound 1 warning(s):\n\n⚠️ resources should be specified\n   Rule: has(values.resources)\n   Path: resources\n   Current value: <nil>",
 		},
 		{
-			name: "multiple errors",
-			errors: []*ValidationError{
-				{
-					Description: "port must be valid",
-					Expression:  "values.service.port <= 65535",
-					Value:       70000,
-					Path:        "service.port",
-				},
-				{
-					Description: "replicas must be positive",
-					Expression:  "values.replicas > 0",
-					Value:       0,
-					Path:        "replicas",
+			name: "only warnings",
+			result: &ValidationResult{
+				Warnings: []*ValidationError{
+					{
+						Description: "resources should be specified",
+						Expression:  "has(values.resources)",
+						Path:        "resources",
+					},
+					{
+						Description: "probes should be configured",
+						Expression:  "has(values.livenessProbe)",
+						Path:        "livenessProbe",
+					},
 				},
 			},
-			expected: "Found 2 validation error(s):\n\n❌ Validation failed: port must be valid\n   Rule: values.service.port <= 65535\n   Path: service.port\n   Current value: 70000\n\n❌ Validation failed: replicas must be positive\n   Rule: values.replicas > 0\n   Path: replicas\n   Current value: 0",
+			expected: "Found 2 warning(s):\n\n⚠️ resources should be specified\n   Rule: has(values.resources)\n   Path: resources\n   Current value: <nil>\n\n⚠️ probes should be configured\n   Rule: has(values.livenessProbe)\n   Path: livenessProbe\n   Current value: <nil>",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(
 			tt.name, func(t *testing.T) {
-				ve := &ValidationErrors{Errors: tt.errors}
-				result := ve.Error()
+				result := tt.result.Error()
 				assert.Equal(t, tt.expected, result)
 			},
 		)
