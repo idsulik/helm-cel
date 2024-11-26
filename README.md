@@ -116,14 +116,14 @@ Rules can have two severity levels:
 
 Example output with warnings:
 ```
-⚠️ Found 1 warning(s):
+Found 1 warning(s):
 
-⚠️ Consider running multiple replicas for high availability
-   Rule: values.replicaCount >= 2
-   Path: replicaCount
-   Current value: 1
-
-✅ Values validation successful with warnings!
+⚠️ Service port must be between 1 and 65535 and replica count must be within min and max bounds
+   Rule: (values.service.port >= 1 && values.service.port <= 65535)  && (values.replicaCount >= values.minReplicas &&   values.replicaCount <= values.maxReplicas)
+   Path: service.port
+   Current value: 80801111111
+-------------------------------------------------
+⚠️✅ Values validation successful with warnings!
 ```
 
 ### Common Validation Patterns
