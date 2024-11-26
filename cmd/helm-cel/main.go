@@ -38,11 +38,23 @@ func runCelValidation(_ *cobra.Command, args []string) error {
 	}
 
 	v := validator.New()
-	if err := v.ValidateChart(absPath); err != nil {
-		// Return the error directly without wrapping it
+	result, err := v.ValidateChart(absPath)
+
+	if err != nil {
 		return err
 	}
 
-	fmt.Println("✅ Values validation successful!")
+	if result.HasErrors() {
+		return result
+	}
+
+	if len(result.Warnings) > 0 {
+		fmt.Println(result.Error())
+		fmt.Println("-------------------------------------------------")
+		fmt.Println("⚠️✅ Values validation successful with warnings!")
+	} else {
+		fmt.Println("✅ Values validation successful!")
+	}
+
 	return nil
 }

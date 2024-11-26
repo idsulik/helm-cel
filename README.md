@@ -88,12 +88,43 @@ If validation fails, you'll get a clear error message:
 Each rule in `values.cel.yaml` consists of:
 - `expr`: A CEL expression that should evaluate to `true` for valid values
 - `desc`: A description of what the rule validates
+- `severity`: Optional severity level ("error" or "warning", defaults to "error")
 
-CEL expressions have access to the entire values structure through the `values` variable. Some useful CEL functions:
+The `values.cel.yaml` can also contain named expressions that can be reused across rules:
+```yaml
+expressions:
+  # Named expressions for reuse
+  portRange: 'values.service.port >= 1 && values.service.port <= 65535'
+  nodePortRange: 'values.service.nodePort >= 30000 && values.service.nodePort <= 32767'
 
-- `has(values.path)` - checks if a field exists
-- `type(value)` - returns the type of a value
-- `size(list)` - returns the length of a list or map
+rules:
+  - expr: "${portRange}"
+    desc: "Service port must be between 1 and 65535"
+  
+  - expr: 'values.service.type == "NodePort" ? ${nodePortRange} : true'
+    desc: "NodePort must be between 30000 and 32767 when service type is NodePort"
+  
+  - expr: "values.replicaCount >= 2"
+    desc: "Consider running multiple replicas for high availability"
+    severity: warning
+```
+### Severity Levels
+
+Rules can have two severity levels:
+- `error`: Validation fails if the rule is not satisfied (default)
+- `warning`: Shows a warning but allows validation to pass
+
+Example output with warnings:
+```
+⚠️ Found 1 warning(s):
+
+⚠️ Consider running multiple replicas for high availability
+   Rule: values.replicaCount >= 2
+   Path: replicaCount
+   Current value: 1
+
+✅ Values validation successful with warnings!
+```
 
 ### Common Validation Patterns
 
@@ -130,10 +161,53 @@ CEL expressions have access to the entire values structure through the `values` 
   desc: "container must have image and tag"
 ```
 
+6. Resource validation:
+```yaml
+expressions:
+  validateResources: '
+    has(values.resources) &&
+    has(values.resources.requests) &&
+    has(values.resources.limits) &&
+    matches(string(values.resources.requests.memory), r"^[0-9]+(Mi|Gi)$") &&
+    matches(string(values.resources.limits.memory), r"^[0-9]+(Mi|Gi)$") &&
+    matches(string(values.resources.requests.cpu), r"^[0-9]+m$|^[0-9]+$") &&
+    matches(string(values.resources.limits.cpu), r"^[0-9]+m$|^[0-9]+$")
+  '
+
+rules:
+  - expr: "${validateResources}"
+    desc: "Resource requests and limits must be properly formatted"
+```
+7. Complex service validation:
+```yaml
+expressions:
+  portRange: 'values.service.port >= 1 && values.service.port <= 65535'
+
+rules:
+  - expr: 'values.service.type in ["ClusterIP", "NodePort", "LoadBalancer"]'
+    desc: "Service type must be valid"
+
+  - expr: "${portRange}"
+    desc: "Service port must be valid"
+
+  - expr: '!values.ingress.enabled || has(values.ingress.className)'
+    desc: "Ingress className should be specified when enabled"
+    severity: warning
+```
+8. Conditional validation with reusable expressions:
+```yaml
+expressions:
+  nodePortRange: 'values.service.nodePort >= 30000 && values.service.nodePort <= 32767'
+
+rules:
+  - expr: 'values.service.type == "NodePort" ? ${nodePortRange} : true'
+    desc: "NodePort must be in valid range when service type is NodePort"
+```
+
 ## Development
 
 Requirements:
-- Go 1.20 or later
+- Go 1.22 or later
 
 Build:
 ```bash
