@@ -151,6 +151,11 @@ Found 1 warning(s):
 ⚠️✅ Values validation successful with warnings!
 ```
 
+If all rules pass, you'll see a success message:
+```
+✅ Values validation successful!
+```
+
 ## Development
 
 Requirements:
