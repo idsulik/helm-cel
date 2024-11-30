@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/cel-go/cel"
+	"github.com/idsulik/helm-cel/pkg/models"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,34 +26,49 @@ func New() *Validator {
 	return &Validator{}
 }
 
-// ValidateChart validates the values.yaml file against CEL rules in values.cel.yaml.
-func (v *Validator) ValidateChart(chartPath string) (*ValidationResult, error) {
+// ValidateChart validates the values.yaml file against CEL rules.
+func (v *Validator) ValidateChart(chartPath, valuesFile, rulesFile string) (*models.ValidationResult, error) {
+	// Read and parse values file
+	valuesPath := filepath.Join(chartPath, valuesFile)
+	valuesFileContent, err := os.ReadFile(valuesPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read values file %s: %v", valuesFile, err)
+	}
+
+	var valuesData map[string]interface{}
+	if err := yaml.Unmarshal(valuesFileContent, &valuesData); err != nil {
+		return nil, fmt.Errorf("failed to parse values file %s: %v", valuesFile, err)
+	}
+
+	// Read and parse rules file
+	rulesPath := filepath.Join(chartPath, rulesFile)
+	rulesContent, err := os.ReadFile(rulesPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read rules file %s: %v", rulesFile, err)
+	}
+
+	var rules models.ValidationRules
+	if err := yaml.Unmarshal(rulesContent, &rules); err != nil {
+		return nil, fmt.Errorf("failed to parse rules file %s: %v", rulesFile, err)
+	}
+
 	env, err := v.initCelEnv()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize CEL environment: %v", err)
 	}
 
 	v.env = env
-	values, err := v.loadValues(chartPath)
-	if err != nil {
-		return nil, err
-	}
-
-	rules, err := v.loadRules(chartPath)
-	if err != nil {
-		return nil, err
-	}
 
 	// Prepare named expressions
-	if err := v.prepareNamedExpressions(rules); err != nil {
+	if err := v.prepareNamedExpressions(&rules); err != nil {
 		return nil, err
 	}
 
-	return v.validateRules(values, rules), nil
+	return v.validateRules(valuesData, &rules), nil
 }
 
 // prepareNamedExpressions expands all named expressions in validation rules
-func (v *Validator) prepareNamedExpressions(rules *ValidationRules) error {
+func (v *Validator) prepareNamedExpressions(rules *models.ValidationRules) error {
 	if rules.Expressions == nil {
 		rules.Expressions = make(map[string]string)
 	}
@@ -137,14 +153,14 @@ func (v *Validator) loadValues(chartPath string) (map[string]interface{}, error)
 }
 
 // loadRules reads and parses the values.cel.yaml file containing validation rules
-func (v *Validator) loadRules(chartPath string) (*ValidationRules, error) {
+func (v *Validator) loadRules(chartPath string) (*models.ValidationRules, error) {
 	rulesPath := filepath.Join(chartPath, "values.cel.yaml")
 	rulesContent, err := os.ReadFile(rulesPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read values.cel.yaml: %v", err)
 	}
 
-	var rules ValidationRules
+	var rules models.ValidationRules
 	if err := yaml.Unmarshal(rulesContent, &rules); err != nil {
 		return nil, fmt.Errorf("failed to parse values.cel.yaml: %v", err)
 	}
@@ -153,17 +169,20 @@ func (v *Validator) loadRules(chartPath string) (*ValidationRules, error) {
 }
 
 // validateRules validates values against all rules and returns the validation result
-func (v *Validator) validateRules(values map[string]interface{}, rules *ValidationRules) *ValidationResult {
-	result := &ValidationResult{
-		Errors:   make([]*ValidationError, 0),
-		Warnings: make([]*ValidationError, 0),
+func (v *Validator) validateRules(
+	values map[string]interface{},
+	rules *models.ValidationRules,
+) *models.ValidationResult {
+	result := &models.ValidationResult{
+		Errors:   make([]*models.ValidationError, 0),
+		Warnings: make([]*models.ValidationError, 0),
 	}
 
 	for _, rule := range rules.Rules {
 		ast, issues := v.env.Compile(rule.Expr)
 		if issues != nil && issues.Err() != nil {
 			result.Errors = append(
-				result.Errors, &ValidationError{
+				result.Errors, &models.ValidationError{
 					Description: fmt.Sprintf("Invalid rule syntax in '%s': %v", rule.Desc, issues.Err()),
 					Expression:  rule.Expr,
 				},
@@ -174,7 +193,7 @@ func (v *Validator) validateRules(values map[string]interface{}, rules *Validati
 		program, err := v.env.Program(ast)
 		if err != nil {
 			result.Errors = append(
-				result.Errors, &ValidationError{
+				result.Errors, &models.ValidationError{
 					Description: fmt.Sprintf("Failed to process rule '%s': %v", rule.Desc, err),
 					Expression:  rule.Expr,
 				},
@@ -188,7 +207,7 @@ func (v *Validator) validateRules(values map[string]interface{}, rules *Validati
 			},
 		)
 
-		validationError := &ValidationError{
+		validationError := &models.ValidationError{
 			Description: rule.Desc,
 			Expression:  rule.Expr,
 		}
