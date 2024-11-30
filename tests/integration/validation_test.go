@@ -224,7 +224,7 @@ rules:
 
 				// Run validation
 				v := validator.New()
-				res, _ := v.ValidateChart(chartDir)
+				res, _ := v.ValidateChart(chartDir, "values.yaml", "values.cel.yaml")
 
 				// Check results
 				if tt.expectedError == "" {
@@ -253,7 +253,7 @@ rules:
 
 	chartDir := setupTestChart(t, values, rules)
 	v := validator.New()
-	res, _ := v.ValidateChart(chartDir)
+	res, _ := v.ValidateChart(chartDir, "values.yaml", "values.cel.yaml")
 
 	assert.True(t, res.HasErrors())
 	assert.Contains(t, res.Error(), "Invalid rule syntax")
@@ -266,7 +266,7 @@ func TestFileNotFound(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	v := validator.New()
-	_, err = v.ValidateChart(tempDir)
+	_, err = v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read")
 }
