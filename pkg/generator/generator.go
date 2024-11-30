@@ -26,7 +26,7 @@ func (g *Generator) GenerateRules(chartPath, valuesFile string) (*models.Validat
 		return nil, fmt.Errorf("failed to read values file %s: %v", valuesFile, err)
 	}
 
-	var values map[string]interface{}
+	var values map[string]any
 	if err := yaml.Unmarshal(content, &values); err != nil {
 		return nil, fmt.Errorf("failed to parse values file %s: %v", valuesFile, err)
 	}
@@ -41,12 +41,12 @@ func (g *Generator) GenerateRules(chartPath, valuesFile string) (*models.Validat
 	return rules, nil
 }
 
-func (g *Generator) generateRulesForMap(prefix string, m map[string]interface{}, rules *models.ValidationRules) {
+func (g *Generator) generateRulesForMap(prefix string, m map[string]any, rules *models.ValidationRules) {
 	for k, v := range m {
 		path := fmt.Sprintf("%s.%s", prefix, k)
 
 		switch val := v.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			rules.Rules = append(
 				rules.Rules, models.Rule{
 					Expr: fmt.Sprintf("has(%s)", path),
@@ -55,7 +55,7 @@ func (g *Generator) generateRulesForMap(prefix string, m map[string]interface{},
 			)
 			g.generateRulesForMap(path, val, rules)
 
-		case []interface{}:
+		case []any:
 			rules.Rules = append(
 				rules.Rules, models.Rule{
 					Expr: fmt.Sprintf("size(%s) >= 0", path),
@@ -65,7 +65,7 @@ func (g *Generator) generateRulesForMap(prefix string, m map[string]interface{},
 
 			// If array is not empty, check first element type for additional rules
 			if len(val) > 0 {
-				if firstElement, ok := val[0].(map[string]interface{}); ok {
+				if firstElement, ok := val[0].(map[string]any); ok {
 					// For each field in the first element, generate rules as if it were a map
 					// but use array index notation
 					for fieldKey, fieldValue := range firstElement {
@@ -83,8 +83,9 @@ func (g *Generator) generateRulesForMap(prefix string, m map[string]interface{},
 		}
 	}
 }
-func (g *Generator) generateRulesForValue(path string, v interface{}, key string, rules *models.ValidationRules) {
-	switch v.(type) {
+
+func (g *Generator) generateRulesForValue(path string, v any, key string, rules *models.ValidationRules) {
+	switch val := v.(type) {
 	case string:
 		rules.Rules = append(
 			rules.Rules, models.Rule{
@@ -119,7 +120,7 @@ func (g *Generator) generateRulesForValue(path string, v interface{}, key string
 				Desc: fmt.Sprintf("%s must be an integer", key),
 			},
 		)
-		if g.isPort(key, v.(int)) {
+		if g.isPort(key, val) {
 			rules.Rules = append(rules.Rules, g.generatePortRule(path, key))
 		}
 	}

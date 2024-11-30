@@ -16,6 +16,10 @@ install: build
 test:
 	go test ./...
 
+.PHONY: lint
+lint:
+	golangci-lint run ./... --timeout=5m --fix
+
 .PHONY: release
 release:
 	goreleaser release --snapshot --rm-dist

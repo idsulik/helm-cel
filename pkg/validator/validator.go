@@ -35,7 +35,7 @@ func (v *Validator) ValidateChart(chartPath, valuesFile, rulesFile string) (*mod
 		return nil, fmt.Errorf("failed to read values file %s: %v", valuesFile, err)
 	}
 
-	var valuesData map[string]interface{}
+	var valuesData map[string]any
 	if err := yaml.Unmarshal(valuesFileContent, &valuesData); err != nil {
 		return nil, fmt.Errorf("failed to parse values file %s: %v", valuesFile, err)
 	}
@@ -137,14 +137,14 @@ func (v *Validator) initCelEnv() (*cel.Env, error) {
 }
 
 // loadValues reads and parses the values.yaml file from the chart path
-func (v *Validator) loadValues(chartPath string) (map[string]interface{}, error) {
+func (v *Validator) loadValues(chartPath string) (map[string]any, error) {
 	valuesPath := filepath.Join(chartPath, "values.yaml")
 	valuesContent, err := os.ReadFile(valuesPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read values.yaml: %v", err)
 	}
 
-	values := make(map[string]interface{})
+	values := make(map[string]any)
 	if err := yaml.Unmarshal(valuesContent, &values); err != nil {
 		return nil, fmt.Errorf("failed to parse values.yaml: %v", err)
 	}
@@ -170,7 +170,7 @@ func (v *Validator) loadRules(chartPath string) (*models.ValidationRules, error)
 
 // validateRules validates values against all rules and returns the validation result
 func (v *Validator) validateRules(
-	values map[string]interface{},
+	values map[string]any,
 	rules *models.ValidationRules,
 ) *models.ValidationResult {
 	result := &models.ValidationResult{
@@ -202,7 +202,7 @@ func (v *Validator) validateRules(
 		}
 
 		out, _, err := program.Eval(
-			map[string]interface{}{
+			map[string]any{
 				"values": values,
 			},
 		)
@@ -259,7 +259,7 @@ func extractPath(errMsg string) string {
 }
 
 // extractValueFromValues extracts the relevant value from the values map based on the CEL expression
-func extractValueFromValues(values map[string]interface{}, expr string) (interface{}, string) {
+func extractValueFromValues(values map[string]any, expr string) (any, string) {
 	parts := strings.Split(expr, "values.")
 	if len(parts) < 2 {
 		return nil, ""
@@ -273,7 +273,7 @@ func extractValueFromValues(values map[string]interface{}, expr string) (interfa
 	pathParts := strings.Split(path, ".")
 
 	for i, part := range pathParts[:len(pathParts)-1] {
-		if v, ok := current[part].(map[string]interface{}); ok {
+		if v, ok := current[part].(map[string]any); ok {
 			current = v
 		} else {
 			// If we can't navigate further, return the last valid value and path

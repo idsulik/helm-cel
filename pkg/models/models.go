@@ -28,7 +28,7 @@ type ValidationResult struct {
 type ValidationError struct {
 	Description string
 	Expression  string
-	Value       interface{}
+	Value       any
 	Path        string
 }
 

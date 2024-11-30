@@ -360,18 +360,18 @@ func TestValidator_ExtractPath(t *testing.T) {
 }
 
 func TestValidator_ExtractValueFromValues(t *testing.T) {
-	values := map[string]interface{}{
-		"service": map[string]interface{}{
+	values := map[string]any{
+		"service": map[string]any{
 			"port":     8080,
 			"type":     "ClusterIP",
 			"nodePort": 30080,
-			"nested": map[string]interface{}{
+			"nested": map[string]any{
 				"field": "value",
 			},
 		},
 		"replicas": 3,
-		"resources": map[string]interface{}{
-			"limits": map[string]interface{}{
+		"resources": map[string]any{
+			"limits": map[string]any{
 				"cpu":    "1",
 				"memory": "1Gi",
 			},
@@ -381,7 +381,7 @@ func TestValidator_ExtractValueFromValues(t *testing.T) {
 	tests := []struct {
 		name          string
 		expr          string
-		expectedValue interface{}
+		expectedValue any
 		expectedPath  string
 	}{
 		{
@@ -622,7 +622,7 @@ rules:
 			values, err := v.loadValues(tempDir)
 			assert.NoError(t, err)
 			assert.NotNil(t, values)
-			assert.Equal(t, 80, values["service"].(map[string]interface{})["port"])
+			assert.Equal(t, 80, values["service"].(map[string]any)["port"])
 
 			rules, err := v.loadRules(tempDir)
 			assert.NoError(t, err)
