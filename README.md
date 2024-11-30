@@ -1,7 +1,6 @@
 [![License](https://img.shields.io/github/license/idsulik/helm-cel.svg)](https://github.com/idsulik/helm-cel/blob/main/LICENSE)
 [![Current Release](https://img.shields.io/github/release/idsulik/helm-cel.svg?logo=github)](https://github.com/idsulik/helm-cel/releases/latest)
 [![GitHub Repo stars](https://img.shields.io/github/stars/idsulik/helm-cel?style=flat&logo=github)](https://github.com/idsulik/helm-cel/stargazers)
-[![GitHub all releases](https://img.shields.io/github/downloads/idsulik/helm-cel/total?logo=github)](https://github.com/idsulik/helm-cel/releases/latest)
 [![GitHub issues](https://img.shields.io/github/issues/idsulik/helm-cel.svg)](https://github.com/idsulik/helm-cel/issues)
 [![GitHub pull requests](https://img.shields.io/github/issues-pr/idsulik/helm-cel.svg)](https://github.com/idsulik/helm-cel/pulls)
 [![codecov](https://codecov.io/gh/idsulik/helm-cel/branch/main/graph/badge.svg?token=4qAukyB2yX)](https://codecov.io/gh/idsulik/helm-cel)
@@ -18,113 +17,69 @@ helm plugin install https://github.com/idsulik/helm-cel
 
 ## Usage
 
-Create a `values.cel.yaml` file in your chart directory alongside your `values.yaml` file:
+### Validation
 
-```yaml
-rules:
-  - expr: "has(values.service) && has(values.service.port)"
-    desc: "service port is required"
-  
-  - expr: "values.service.port >= 1 && values.service.port <= 65535"
-    desc: "service port must be between 1 and 65535"
-  
-  - expr: "!(has(values.replicaCount)) || values.replicaCount >= 1"
-    desc: "if replicaCount is set, it must be at least 1"
-```
-
-Then run validation:
-
+Validate your chart values using the validate command:
 ```bash
-helm cel /path/to/your/chart
+helm cel validate ./mychart
 ```
 
-## Example
-
-Given this `values.yaml`:
-
-```yaml
-service:
-  type: ClusterIP
-  port: 80
-
-replicaCount: 1
-
-image:
-  repository: nginx
-  tag: latest
+Options:
+```bash
+--values-file, -v    Values file to validate (defaults to values.yaml)
+--rules-file, -r     Rules file to validate against (defaults to values.cel.yaml)
 ```
 
-And this `values.cel.yaml`:
-
-```yaml
-rules:
-  - expr: "has(values.service) && has(values.service.port)"
-    desc: "service port is required"
-  
-  - expr: "values.service.port >= 1 && values.service.port <= 65535"
-    desc: "service port must be between 1 and 65535"
-  
-  - expr: "values.replicaCount >= 1"
-    desc: "replica count must be at least 1"
-  
-  - expr: |
-      has(values.image) && 
-      has(values.image.repository) && 
-      has(values.image.tag)
-    desc: "image repository and tag are required"
+Example with custom files:
+```bash
+helm cel validate ./mychart --values-file prod.values.yaml --rules-file prod.cel.yaml
 ```
 
-If validation fails, you'll get a clear error message:
+### Generating Rules
 
-```
-❌ Validation failed: replica count must be at least 1
-   Rule: values.replicaCount >= 1
-   Path: replicaCount
-   Current value: 0
+You can automatically generate validation rules based on your values file structure:
+```bash
+helm cel generate ./mychart
 ```
 
-## Writing Validation Rules
+Options:
+```bash
+--force, -f          Force overwrite existing rules file
+--values-file, -v    Values file to generate rules from (defaults to values.yaml)
+--output-file, -o    Output file for generated rules (defaults to values.cel.yaml)
+```
+
+Example with custom files:
+```bash
+helm cel generate ./mychart --values-file prod.values.yaml --output-file prod.cel.yaml --force
+```
+
+## Rule Structure
 
 Each rule in `values.cel.yaml` consists of:
 - `expr`: A CEL expression that should evaluate to `true` for valid values
 - `desc`: A description of what the rule validates
 - `severity`: Optional severity level ("error" or "warning", defaults to "error")
 
-The `values.cel.yaml` can also contain named expressions that can be reused across rules:
+Example `values.cel.yaml`:
 ```yaml
-expressions:
-  # Named expressions for reuse
-  portRange: 'values.service.port >= 1 && values.service.port <= 65535'
-  nodePortRange: 'values.service.nodePort >= 30000 && values.service.nodePort <= 32767'
-
 rules:
-  - expr: "${portRange}"
-    desc: "Service port must be between 1 and 65535"
+  - expr: "has(values.service) && has(values.service.port)"
+    desc: "service port is required"
   
-  - expr: 'values.service.type == "NodePort" ? ${nodePortRange} : true'
-    desc: "NodePort must be between 30000 and 32767 when service type is NodePort"
-  
-  - expr: "values.replicaCount >= 2"
-    desc: "Consider running multiple replicas for high availability"
+  - expr: "values.service.port >= 1 && values.service.port <= 65535"
+    desc: "service port must be between 1 and 65535"
     severity: warning
+  
+  - expr: "!(has(values.replicaCount)) || values.replicaCount >= 1"
+    desc: "if replicaCount is set, it must be at least 1"
 ```
+
 ### Severity Levels
 
 Rules can have two severity levels:
 - `error`: Validation fails if the rule is not satisfied (default)
 - `warning`: Shows a warning but allows validation to pass
-
-Example output with warnings:
-```
-Found 1 warning(s):
-
-⚠️ Service port must be between 1 and 65535 and replica count must be within min and max bounds
-   Rule: (values.service.port >= 1 && values.service.port <= 65535)  && (values.replicaCount >= values.minReplicas &&   values.replicaCount <= values.maxReplicas)
-   Path: service.port
-   Current value: 80801111111
--------------------------------------------------
-⚠️✅ Values validation successful with warnings!
-```
 
 ### Common Validation Patterns
 
@@ -140,68 +95,60 @@ Found 1 warning(s):
   desc: "number must be between 0 and 100"
 ```
 
-3. Conditional requirements:
-```yaml
-- expr: "!(has(values.optional)) || values.optional >= 0"
-  desc: "if optional is set, it must be non-negative"
-```
-
-4. Type validation:
+3. Type validation:
 ```yaml
 - expr: "type(values.ports) == list"
   desc: "ports must be a list"
 ```
 
-5. Complex object validation:
+4. Resource validation:
 ```yaml
-- expr: |
-    has(values.container) && 
-    has(values.container.image) && 
-    has(values.container.tag)
-  desc: "container must have image and tag"
+- expr: 'values.resources.requests.memory.matches("^[0-9]+(Mi|Gi)$")'
+  desc: "memory requests must be in Mi or Gi"
 ```
 
-6. Resource validation:
+5. Port validation:
 ```yaml
-expressions:
-  validateResources: '
-    has(values.resources) &&
-    has(values.resources.requests) &&
-    has(values.resources.limits) &&
-    matches(string(values.resources.requests.memory), r"^[0-9]+(Mi|Gi)$") &&
-    matches(string(values.resources.limits.memory), r"^[0-9]+(Mi|Gi)$") &&
-    matches(string(values.resources.requests.cpu), r"^[0-9]+m$|^[0-9]+$") &&
-    matches(string(values.resources.limits.cpu), r"^[0-9]+m$|^[0-9]+$")
-  '
-
-rules:
-  - expr: "${validateResources}"
-    desc: "Resource requests and limits must be properly formatted"
+- expr: "values.service.port >= 1 && values.service.port <= 65535"
+  desc: "port must be valid"
 ```
-7. Complex service validation:
+
+### Reusable Expressions
+
+You can define expressions to reuse across rules:
 ```yaml
 expressions:
   portRange: 'values.service.port >= 1 && values.service.port <= 65535'
-
-rules:
-  - expr: 'values.service.type in ["ClusterIP", "NodePort", "LoadBalancer"]'
-    desc: "Service type must be valid"
-
-  - expr: "${portRange}"
-    desc: "Service port must be valid"
-
-  - expr: '!values.ingress.enabled || has(values.ingress.className)'
-    desc: "Ingress className should be specified when enabled"
-    severity: warning
-```
-8. Conditional validation with reusable expressions:
-```yaml
-expressions:
   nodePortRange: 'values.service.nodePort >= 30000 && values.service.nodePort <= 32767'
 
 rules:
+  - expr: "${portRange}"
+    desc: "Service port must be valid"
+  
   - expr: 'values.service.type == "NodePort" ? ${nodePortRange} : true'
-    desc: "NodePort must be in valid range when service type is NodePort"
+    desc: "NodePort must be valid when type is NodePort"
+```
+
+### Validation Results
+
+If validation fails, you'll get a clear error message:
+```
+❌ Validation failed: replica count must be at least 1
+   Rule: values.replicaCount >= 1
+   Path: replicaCount
+   Current value: 0
+```
+
+With warnings:
+```
+Found 1 warning(s):
+
+⚠️ Service port must be between 1 and 65535
+   Rule: values.service.port >= 1 && values.service.port <= 65535
+   Path: service.port
+   Current value: 80801
+-------------------------------------------------
+⚠️✅ Values validation successful with warnings!
 ```
 
 ## Development

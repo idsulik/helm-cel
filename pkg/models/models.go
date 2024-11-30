@@ -1,4 +1,4 @@
-package validator
+package models
 
 import (
 	"fmt"
@@ -9,8 +9,7 @@ import (
 type Rule struct {
 	Expr     string `yaml:"expr"`
 	Desc     string `yaml:"desc"`
-	Severity string `yaml:"severity"` // "error" or "warning", defaults to "error"
-	Name     string `yaml:"name,omitempty"`
+	Severity string `yaml:"severity,omitempty"` // "error" or "warning", defaults to "error"
 }
 
 // ValidationRules contains all CEL validation rules and named expressions

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/idsulik/helm-cel/pkg/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -103,7 +104,7 @@ rules:
 				require.NoError(t, writeFile(t, tempDir, "values.cel.yaml", tt.rulesContent))
 
 				v := New()
-				res, _ := v.ValidateChart(tempDir)
+				res, _ := v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
 
 				if tt.shouldValidate {
 					assert.False(t, res.HasErrors())
@@ -120,10 +121,10 @@ func TestValidator_ValidateChart_NoValues(t *testing.T) {
 	tempDir := t.TempDir()
 
 	v := New()
-	_, err := v.ValidateChart(tempDir)
+	_, err := v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to read values.yaml")
+	assert.Contains(t, err.Error(), "failed to read values file values.yaml")
 }
 
 func TestValidator_ValidateChart_InvalidValues(t *testing.T) {
@@ -131,10 +132,10 @@ func TestValidator_ValidateChart_InvalidValues(t *testing.T) {
 	require.NoError(t, writeFile(t, tempDir, "values.yaml", "blah"))
 
 	v := New()
-	_, err := v.ValidateChart(tempDir)
+	_, err := v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to parse values.yaml")
+	assert.Contains(t, err.Error(), "failed to parse values file values.yaml")
 }
 
 func TestValidator_ValidateChart_NoRules(t *testing.T) {
@@ -142,10 +143,10 @@ func TestValidator_ValidateChart_NoRules(t *testing.T) {
 	require.NoError(t, writeFile(t, tempDir, "values.yaml", ""))
 
 	v := New()
-	_, err := v.ValidateChart(tempDir)
+	_, err := v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to read values.cel.yaml")
+	assert.Contains(t, err.Error(), "failed to read rules file values.cel.yaml")
 }
 
 func TestValidator_ValidateChart_InvalidRules(t *testing.T) {
@@ -154,10 +155,10 @@ func TestValidator_ValidateChart_InvalidRules(t *testing.T) {
 	require.NoError(t, writeFile(t, tempDir, "values.cel.yaml", "blah"))
 
 	v := New()
-	_, err := v.ValidateChart(tempDir)
+	_, err := v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to parse values.cel.yaml")
+	assert.Contains(t, err.Error(), "failed to parse rules file values.cel.yaml")
 }
 
 func TestValidator_expandExpression(t *testing.T) {
@@ -441,12 +442,12 @@ func TestValidator_ExtractValueFromValues(t *testing.T) {
 func TestValidationError_Error(t *testing.T) {
 	tests := []struct {
 		name     string
-		err      *ValidationError
+		err      *models.ValidationError
 		expected string
 	}{
 		{
 			name: "full error details",
-			err: &ValidationError{
+			err: &models.ValidationError{
 				Description: "port must be valid",
 				Expression:  "values.service.port <= 65535",
 				Value:       70000,
@@ -456,7 +457,7 @@ func TestValidationError_Error(t *testing.T) {
 		},
 		{
 			name: "error without path",
-			err: &ValidationError{
+			err: &models.ValidationError{
 				Description: "replicas must be positive",
 				Expression:  "values.replicas > 0",
 				Value:       0,
@@ -465,7 +466,7 @@ func TestValidationError_Error(t *testing.T) {
 		},
 		{
 			name: "error without value",
-			err: &ValidationError{
+			err: &models.ValidationError{
 				Description: "service is required",
 				Expression:  "has(values.service)",
 				Path:        "service",
@@ -474,7 +475,7 @@ func TestValidationError_Error(t *testing.T) {
 		},
 		{
 			name: "error with nil value",
-			err: &ValidationError{
+			err: &models.ValidationError{
 				Description: "invalid configuration",
 				Expression:  "has(values.config)",
 				Value:       nil,
@@ -497,13 +498,13 @@ func TestValidationError_Error(t *testing.T) {
 func TestValidationResult_Error(t *testing.T) {
 	tests := []struct {
 		name     string
-		result   *ValidationResult
+		result   *models.ValidationResult
 		expected string
 	}{
 		{
 			name: "errors and warnings",
-			result: &ValidationResult{
-				Errors: []*ValidationError{
+			result: &models.ValidationResult{
+				Errors: []*models.ValidationError{
 					{
 						Description: "port must be valid",
 						Expression:  "values.service.port <= 65535",
@@ -511,7 +512,7 @@ func TestValidationResult_Error(t *testing.T) {
 						Path:        "service.port",
 					},
 				},
-				Warnings: []*ValidationError{
+				Warnings: []*models.ValidationError{
 					{
 						Description: "resources should be specified",
 						Expression:  "has(values.resources)",
@@ -523,8 +524,8 @@ func TestValidationResult_Error(t *testing.T) {
 		},
 		{
 			name: "only warnings",
-			result: &ValidationResult{
-				Warnings: []*ValidationError{
+			result: &models.ValidationResult{
+				Warnings: []*models.ValidationError{
 					{
 						Description: "resources should be specified",
 						Expression:  "has(values.resources)",
