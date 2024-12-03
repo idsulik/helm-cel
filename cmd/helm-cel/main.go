@@ -24,13 +24,13 @@ var (
 const (
 	validateShort = "Validate Helm values using CEL expressions"
 	validateLong  = `A Helm plugin to validate values.yaml using CEL expressions defined in values.cel.yaml.
-Example: helm cel ./mychart
-Example with custom values: helm cel ./mychart --values prod.values.yaml`
+Example short: helm cel validate ./mychart
+Example long: helm cel validate ./mychart --values-file prod.values.yaml --rules-file prod.values.cel.yaml`
 
 	generateShort = "Generate CEL validation rules from values.yaml"
 	generateLong  = `Generate values.cel.yaml file with validation rules based on the structure of values.yaml.
 Example: helm cel generate ./mychart
-Example with custom values file: helm cel generate ./mychart --values prod.values.yaml
+Example with custom values file: helm cel generate ./mychart --values-file prod.values.yaml
 Example with force overwrite: helm cel generate ./mychart --force`
 )
 
@@ -58,7 +58,9 @@ func init() {
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(generateCmd)
 
-	// Add flags to generate command
+	validateCmd.Flags().StringVarP(&valuesFile, "values-file", "v", "values.yaml", "Values file to validate")
+	validateCmd.Flags().StringVarP(&rulesFile, "rules-file", "r", "values.cel.yaml", "Rules file to validate against")
+
 	generateCmd.Flags().BoolVarP(&forceOverwrite, "force", "f", false, "Force overwrite existing values.cel.yaml")
 	generateCmd.Flags().StringVarP(
 		&genValuesFile,
@@ -74,10 +76,6 @@ func init() {
 		"values.cel.yaml",
 		"Output file for generated rules",
 	)
-
-	// Add flags to root (validate) command
-	rootCmd.Flags().StringVarP(&valuesFile, "values-file", "v", "values.yaml", "Values file to validate")
-	rootCmd.Flags().StringVarP(&rulesFile, "rules-file", "r", "values.cel.yaml", "Rules file to validate against")
 }
 
 func main() {
