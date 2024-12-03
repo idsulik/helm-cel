@@ -1,5 +1,5 @@
 name: "cel"
-version: "2.0.1"
+version: "2.0.2"
 usage: "Validate Helm values using CEL expressions"
 description: |-
   A Helm plugin to validate values.yaml using CEL expressions defined in values.cel.yaml.
@@ -7,6 +7,7 @@ description: |-
 command: "$HELM_PLUGIN_DIR/bin/helm-cel"
 hooks:
   install: "cd $HELM_PLUGIN_DIR && scripts/install.sh"
+  update: "cd $HELM_PLUGIN_DIR && scripts/install.sh"
 platformCommand:
   - os: linux
     arch: amd64
