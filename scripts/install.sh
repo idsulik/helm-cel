@@ -36,16 +36,18 @@ fi
 URL="https://github.com/idsulik/helm-cel/releases/download/v${VERSION}/${ARCHIVE}"
 echo "Downloading $URL"
 
-# Create bin directory
+# Create bin directory with proper permissions
+rm -rf "$HELM_PLUGIN_DIR/bin"
 mkdir -p "$HELM_PLUGIN_DIR/bin"
+chmod 755 "$HELM_PLUGIN_DIR/bin"
 
 # Download and extract
 if [ "$OS" = "Windows" ]; then
     curl -sSL -o "${ARCHIVE}" "${URL}"
-    unzip -o "${ARCHIVE}" -d bin/
+    unzip -o "${ARCHIVE}" -d "$HELM_PLUGIN_DIR/bin/"
     rm "${ARCHIVE}"
 else
-    curl -sSL "${URL}" | tar xzf - -C bin/
+    curl -sSL "${URL}" | tar xzf - -C "$HELM_PLUGIN_DIR/bin/"
 fi
 
 # Make binary executable (not needed for Windows)
