@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 	"github.com/idsulik/helm-cel/pkg/models"
+	"github.com/idsulik/helm-cel/pkg/utils"
 	"gopkg.in/yaml.v3"
 )
 
@@ -18,115 +19,63 @@ const (
 
 // Validator handles the validation of Helm values using CEL
 type Validator struct {
-	env *cel.Env
+	env           *cel.Env
+	valuesLoader  *ValuesLoader
+	rulesLoader   *RulesLoader
+	exprProcessor *ExpressionProcessor
 }
 
-// New creates a new Validator instance
 func New() *Validator {
-	return &Validator{}
+	return &Validator{
+		valuesLoader:  NewValuesLoader(),
+		rulesLoader:   NewRulesLoader(),
+		exprProcessor: NewExpressionProcessor(),
+	}
 }
 
 // ValidateChart validates the values.yaml file against CEL rules.
-func (v *Validator) ValidateChart(chartPath, valuesFile, rulesFile string) (*models.ValidationResult, error) {
-	// Read and parse values file
-	valuesPath := filepath.Join(chartPath, valuesFile)
-	valuesFileContent, err := os.ReadFile(valuesPath)
+func (v *Validator) ValidateChart(
+	chartPath string,
+	valuesFiles []string,
+	rulesFiles []string,
+) (*models.ValidationResult, error) {
+	// Process values files
+	valuesFiles, err := utils.GetAbsolutePaths(chartPath, valuesFiles)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read values file %s: %v", valuesFile, err)
+		return nil, fmt.Errorf("failed to get values absolute paths: %v", err)
 	}
 
-	var valuesData map[string]any
-	if err := yaml.Unmarshal(valuesFileContent, &valuesData); err != nil {
-		return nil, fmt.Errorf("failed to parse values file %s: %v", valuesFile, err)
-	}
-
-	// Read and parse rules file
-	rulesPath := filepath.Join(chartPath, rulesFile)
-	rulesContent, err := os.ReadFile(rulesPath)
+	// Process rules files
+	rulesFiles, err = utils.GetAbsolutePaths(chartPath, rulesFiles)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read rules file %s: %v", rulesFile, err)
+		return nil, fmt.Errorf("failed to get rules absolute paths: %v", err)
 	}
 
-	var rules models.ValidationRules
-	if err := yaml.Unmarshal(rulesContent, &rules); err != nil {
-		return nil, fmt.Errorf("failed to parse rules file %s: %v", rulesFile, err)
+	mergedValues, err := v.valuesLoader.LoadAndMergeValues(valuesFiles)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load values: %v", err)
+	}
+
+	mergedRules, err := v.rulesLoader.LoadAndMergeRules(rulesFiles)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load rules: %v", err)
+	}
+
+	if len(mergedRules.Rules) == 0 {
+		return &models.ValidationResult{}, nil
 	}
 
 	env, err := v.initCelEnv()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize CEL environment: %v", err)
 	}
-
 	v.env = env
 
-	// Prepare named expressions
-	if err := v.prepareNamedExpressions(&rules); err != nil {
+	if err := v.exprProcessor.PrepareNamedExpressions(mergedRules); err != nil {
 		return nil, err
 	}
 
-	return v.validateRules(valuesData, &rules), nil
-}
-
-// prepareNamedExpressions expands all named expressions in validation rules
-func (v *Validator) prepareNamedExpressions(rules *models.ValidationRules) error {
-	if rules.Expressions == nil {
-		rules.Expressions = make(map[string]string)
-	}
-
-	for i, rule := range rules.Rules {
-		expandedExpr, err := v.expandExpression(rule.Expr, rules.Expressions)
-		if err != nil {
-			return fmt.Errorf("failed to expand rule '%s': %v", rule.Desc, err)
-		}
-		rules.Rules[i].Expr = expandedExpr
-	}
-
-	return nil
-}
-
-// expandExpression expands a single expression by replacing named expression references
-func (v *Validator) expandExpression(expr string, expressions map[string]string) (string, error) {
-	if expressions == nil {
-		expressions = make(map[string]string)
-	}
-
-	result := expr
-	processedRefs := make(map[string]bool)
-
-	// Try maximum number of iterations based on number of expressions
-	maxIterations := len(expressions) + 1
-	iteration := 0
-
-	for strings.Contains(result, "${") && iteration < maxIterations {
-		iteration++
-		foundReplacement := false
-
-		for name, namedExpr := range expressions {
-			placeholder := "${" + name + "}"
-
-			// Skip if we've already processed this reference in a previous iteration
-			if strings.Contains(result, placeholder) {
-				foundReplacement = true
-				if processedRefs[name] {
-					return "", fmt.Errorf("circular reference detected in expression: %s", expr)
-				}
-				processedRefs[name] = true
-				result = strings.ReplaceAll(result, placeholder, "("+namedExpr+")")
-			}
-		}
-
-		// If no replacements were made in this iteration, we have unresolvable references
-		if !foundReplacement {
-			return "", fmt.Errorf("undefined reference in expression: %s", expr)
-		}
-	}
-
-	// If we still have references after max iterations, we have a circular reference
-	if strings.Contains(result, "${") {
-		return "", fmt.Errorf("circular reference detected in expression: %s", expr)
-	}
-
-	return result, nil
+	return v.validateRules(mergedValues, mergedRules), nil
 }
 
 // initCelEnv initializes the CEL environment with required variables and functions

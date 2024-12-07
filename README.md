@@ -26,13 +26,30 @@ helm cel validate ./mychart
 
 Options:
 ```bash
---values-file, -v    Values file to validate (defaults to values.yaml)
---rules-file, -r     Rules file to validate against (defaults to values.cel.yaml)
+--values-file, -v    Values files to validate (comma-separated or multiple flags)
+                     Defaults to values.yaml
+--rules-file, -r     Rules files to validate against (comma-separated or multiple flags)
+                     Defaults to values.cel.yaml
 ```
 
 Example with custom files:
 ```bash
+# Using single values and rules files
 helm cel validate ./mychart --values-file prod.values.yaml --rules-file prod.cel.yaml
+
+# Using multiple values files (later files take precedence)
+helm cel validate ./mychart --values-file common.yaml --values-file prod.yaml
+
+# Using comma-separated values files
+helm cel validate ./mychart --values-file common.yaml,prod.yaml,overrides.yaml
+
+# Using multiple rules files
+helm cel validate ./mychart --rules-file global.cel.yaml --rules-file ingress.cel.yaml
+
+# Combining multiple values and rules files
+helm cel validate ./mychart \
+  --values-file common.yaml,prod.yaml \
+  --rules-file global.cel.yaml,ingress.cel.yaml,deployment.cel.yaml
 ```
 
 ### Generating Rules
@@ -53,6 +70,22 @@ Example with custom files:
 ```bash
 helm cel generate ./mychart --values-file prod.values.yaml --output-file prod.cel.yaml --force
 ```
+
+## Rule Organization
+
+You can organize your validation rules into multiple files for better maintainability. Files must have the `.cel.yaml` extension. Example structure:
+
+```
+mychart/
+├── Chart.yaml
+├── values.yaml
+└── cel/
+    ├── global.cel.yaml     # Global configuration rules
+    ├── ingress.cel.yaml    # Ingress-specific rules
+    └── deployment.cel.yaml # Deployment-specific rules
+```
+
+When using multiple rule files, expressions are shared across all files but must be unique (no duplicate expression names allowed).
 
 ## Rule Structure
 

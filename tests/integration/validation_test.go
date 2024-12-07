@@ -21,7 +21,7 @@ func setupTestChart(t *testing.T, values, rules string) string {
 	// Clean up after the test
 	t.Cleanup(
 		func() {
-			os.RemoveAll(chartDir)
+			_ = os.RemoveAll(chartDir)
 		},
 	)
 
@@ -224,7 +224,7 @@ rules:
 
 				// Run validation
 				v := validator.New()
-				res, _ := v.ValidateChart(chartDir, "values.yaml", "values.cel.yaml")
+				res, _ := v.ValidateChart(chartDir, []string{"values.yaml"}, []string{"values.cel.yaml"})
 
 				// Check results
 				if tt.expectedError == "" {
@@ -253,7 +253,7 @@ rules:
 
 	chartDir := setupTestChart(t, values, rules)
 	v := validator.New()
-	res, _ := v.ValidateChart(chartDir, "values.yaml", "values.cel.yaml")
+	res, _ := v.ValidateChart(chartDir, []string{"values.yaml"}, []string{"values.cel.yaml"})
 
 	assert.True(t, res.HasErrors())
 	assert.Contains(t, res.Error(), "Invalid rule syntax")
@@ -263,10 +263,12 @@ rules:
 func TestFileNotFound(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "helm-cel-missing-*")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(tempDir)
 
 	v := validator.New()
-	_, err = v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
+	_, err = v.ValidateChart(tempDir, []string{"values.yaml"}, []string{"values.cel.yaml"})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read")
 }

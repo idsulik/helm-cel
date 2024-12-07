@@ -17,15 +17,16 @@ var (
 	outputFile     string
 
 	// Flags for validate command
-	valuesFile string
-	rulesFile  string
+	valuesFiles []string
+	rulesFiles  []string
 )
 
 const (
 	validateShort = "Validate Helm values using CEL expressions"
-	validateLong  = `A Helm plugin to validate values.yaml using CEL expressions defined in values.cel.yaml.
-Example short: helm cel validate ./mychart
-Example long: helm cel validate ./mychart --values-file prod.values.yaml --rules-file prod.values.cel.yaml`
+	validateLong  = `A Helm plugin to validate values.yaml using CEL expressions defined in .cel.yaml files.
+Example using defaults: helm cel validate ./mychart
+Example with specific values: helm cel validate ./mychart -v values1.yaml -v values2.yaml
+Example with multiple files: helm cel validate ./mychart -v prod.yaml,staging.yaml -r rules1.cel.yaml,rules2.cel.yaml`
 
 	generateShort = "Generate CEL validation rules from values.yaml"
 	generateLong  = `Generate values.cel.yaml file with validation rules based on the structure of values.yaml.
@@ -58,8 +59,20 @@ func init() {
 	rootCmd.AddCommand(validateCmd)
 	rootCmd.AddCommand(generateCmd)
 
-	validateCmd.Flags().StringVarP(&valuesFile, "values-file", "v", "values.yaml", "Values file to validate")
-	validateCmd.Flags().StringVarP(&rulesFile, "rules-file", "r", "values.cel.yaml", "Rules file to validate against")
+	validateCmd.Flags().StringSliceVarP(
+		&valuesFiles,
+		"values-file",
+		"v",
+		[]string{"values.yaml"},
+		"Values files to validate (comma-separated or multiple -v flags)",
+	)
+	validateCmd.Flags().StringSliceVarP(
+		&rulesFiles,
+		"rules-file",
+		"r",
+		[]string{"values.cel.yaml"},
+		"Rules files to validate against (comma-separated or multiple -r flags)",
+	)
 
 	generateCmd.Flags().BoolVarP(&forceOverwrite, "force", "f", false, "Force overwrite existing values.cel.yaml")
 	generateCmd.Flags().StringVarP(
@@ -80,7 +93,7 @@ func init() {
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -96,20 +109,8 @@ func runValidator(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get absolute path: %v", err)
 	}
 
-	// Construct full paths
-	valuesPath := filepath.Join(absPath, valuesFile)
-	rulesPath := filepath.Join(absPath, rulesFile)
-
-	// Check if files exist
-	if _, err := os.Stat(valuesPath); os.IsNotExist(err) {
-		return fmt.Errorf("values file not found: %s", valuesPath)
-	}
-	if _, err := os.Stat(rulesPath); os.IsNotExist(err) {
-		return fmt.Errorf("rules file not found: %s", rulesPath)
-	}
-
 	v := validator.New()
-	result, err := v.ValidateChart(absPath, valuesFile, rulesFile)
+	result, err := v.ValidateChart(absPath, valuesFiles, rulesFiles)
 
 	if err != nil {
 		return err

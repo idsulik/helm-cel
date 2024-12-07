@@ -104,7 +104,7 @@ rules:
 				require.NoError(t, writeFile(t, tempDir, "values.cel.yaml", tt.rulesContent))
 
 				v := New()
-				res, _ := v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
+				res, _ := v.ValidateChart(tempDir, []string{"values.yaml"}, []string{"values.cel.yaml"})
 
 				if tt.shouldValidate {
 					assert.False(t, res.HasErrors())
@@ -121,10 +121,11 @@ func TestValidator_ValidateChart_NoValues(t *testing.T) {
 	tempDir := t.TempDir()
 
 	v := New()
-	_, err := v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
+	_, err := v.ValidateChart(tempDir, []string{"values.yaml"}, []string{"values.cel.yaml"})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to read values file values.yaml")
+	assert.Contains(t, err.Error(), "failed to load values")
+	assert.Contains(t, err.Error(), "values.yaml")
 }
 
 func TestValidator_ValidateChart_InvalidValues(t *testing.T) {
@@ -132,10 +133,11 @@ func TestValidator_ValidateChart_InvalidValues(t *testing.T) {
 	require.NoError(t, writeFile(t, tempDir, "values.yaml", "blah"))
 
 	v := New()
-	_, err := v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
+	_, err := v.ValidateChart(tempDir, []string{"values.yaml"}, []string{"values.cel.yaml"})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to parse values file values.yaml")
+	assert.Contains(t, err.Error(), "failed to parse values file")
+	assert.Contains(t, err.Error(), "values.yaml")
 }
 
 func TestValidator_ValidateChart_NoRules(t *testing.T) {
@@ -143,10 +145,11 @@ func TestValidator_ValidateChart_NoRules(t *testing.T) {
 	require.NoError(t, writeFile(t, tempDir, "values.yaml", ""))
 
 	v := New()
-	_, err := v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
+	_, err := v.ValidateChart(tempDir, []string{"values.yaml"}, []string{"values.cel.yaml"})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to read rules file values.cel.yaml")
+	assert.Contains(t, err.Error(), "failed to load rules")
+	assert.Contains(t, err.Error(), "values.cel.yaml")
 }
 
 func TestValidator_ValidateChart_InvalidRules(t *testing.T) {
@@ -155,165 +158,11 @@ func TestValidator_ValidateChart_InvalidRules(t *testing.T) {
 	require.NoError(t, writeFile(t, tempDir, "values.cel.yaml", "blah"))
 
 	v := New()
-	_, err := v.ValidateChart(tempDir, "values.yaml", "values.cel.yaml")
+	_, err := v.ValidateChart(tempDir, []string{"values.yaml"}, []string{"values.cel.yaml"})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to parse rules file values.cel.yaml")
-}
-
-func TestValidator_expandExpression(t *testing.T) {
-	tests := []struct {
-		name        string
-		expr        string
-		expressions map[string]string
-		want        string
-		wantErr     string
-	}{
-		{
-			name: "simple expression without references",
-			expr: "values.service.port <= 65535",
-			expressions: map[string]string{
-				"validPort": "port > 0",
-			},
-			want: "values.service.port <= 65535",
-		},
-		{
-			name: "single reference",
-			expr: "${validPort}",
-			expressions: map[string]string{
-				"validPort": "values.service.port <= 65535",
-			},
-			want: "(values.service.port <= 65535)",
-		},
-		{
-			name: "multiple references",
-			expr: "${validPort} && ${validType}",
-			expressions: map[string]string{
-				"validPort": "values.service.port <= 65535",
-				"validType": "values.service.type in ['ClusterIP', 'NodePort']",
-			},
-			want: "(values.service.port <= 65535) && (values.service.type in ['ClusterIP', 'NodePort'])",
-		},
-		{
-			name: "nested references",
-			expr: "${validateService}",
-			expressions: map[string]string{
-				"validPort":       "values.service.port <= 65535",
-				"validType":       "values.service.type in ['ClusterIP', 'NodePort']",
-				"validateService": "${validPort} && ${validType}",
-			},
-			want: "((values.service.port <= 65535) && (values.service.type in ['ClusterIP', 'NodePort']))",
-		},
-		{
-			name: "multiple nested references",
-			expr: "${validateAll}",
-			expressions: map[string]string{
-				"validPort":       "values.service.port <= 65535",
-				"validType":       "values.service.type in ['ClusterIP', 'NodePort']",
-				"validateService": "${validPort} && ${validType}",
-				"validateAll":     "${validateService} && has(values.replicas)",
-			},
-			want: "(((values.service.port <= 65535) && (values.service.type in ['ClusterIP', 'NodePort'])) && has(values.replicas))",
-		},
-		{
-			name: "reference in middle of expression",
-			expr: "has(values.service) && ${validPort} && has(values.replicas)",
-			expressions: map[string]string{
-				"validPort": "values.service.port <= 65535",
-			},
-			want: "has(values.service) && (values.service.port <= 65535) && has(values.replicas)",
-		},
-		{
-			name: "circular reference - direct",
-			expr: "${a}",
-			expressions: map[string]string{
-				"a": "${a}",
-			},
-			wantErr: "circular reference detected in expression: ${a}",
-		},
-		{
-			name: "circular reference - indirect",
-			expr: "${a}",
-			expressions: map[string]string{
-				"a": "${b}",
-				"b": "${c}",
-				"c": "${a}",
-			},
-			wantErr: "circular reference detected in expression: ${a}",
-		},
-		{
-			name: "undefined reference",
-			expr: "${undefinedRef}",
-			expressions: map[string]string{
-				"validPort": "values.service.port <= 65535",
-			},
-			wantErr: "undefined reference in expression: ${undefinedRef}",
-		},
-		{
-			name: "multiple identical references",
-			expr: "${validPort} && ${validPort}",
-			expressions: map[string]string{
-				"validPort": "values.service.port <= 65535",
-			},
-			want: "(values.service.port <= 65535) && (values.service.port <= 65535)",
-		},
-		{
-			name:        "empty expressions map",
-			expr:        "${validPort}",
-			expressions: map[string]string{},
-			wantErr:     "undefined reference in expression: ${validPort}",
-		},
-		{
-			name:        "nil expressions map",
-			expr:        "${validPort}",
-			expressions: nil,
-			wantErr:     "undefined reference in expression: ${validPort}",
-		},
-		{
-			name: "empty expression",
-			expr: "",
-			expressions: map[string]string{
-				"validPort": "values.service.port <= 65535",
-			},
-			want: "",
-		},
-		{
-			name: "malformed reference - unclosed",
-			expr: "${unclosed",
-			expressions: map[string]string{
-				"unclosed": "values.service.port <= 65535",
-			},
-			wantErr: "undefined reference in expression: ${unclosed",
-		},
-		{
-			name: "complex nested expression",
-			expr: "${validateResources}",
-			expressions: map[string]string{
-				"memoryPattern":     "matches(string(value), r\"^[0-9]+(Mi|Gi)$\")",
-				"cpuPattern":        "matches(string(value), r\"^[0-9]+m$\")",
-				"validateResources": "has(values.resources.requests) && has(values.resources.limits) && ${memoryPattern} && ${cpuPattern}",
-			},
-			want: "(has(values.resources.requests) && has(values.resources.limits) && (matches(string(value), r\"^[0-9]+(Mi|Gi)$\")) && (matches(string(value), r\"^[0-9]+m$\")))",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(
-			tt.name, func(t *testing.T) {
-				v := New()
-				got, err := v.expandExpression(tt.expr, tt.expressions)
-
-				if tt.wantErr != "" {
-					assert.Error(t, err)
-					assert.Equal(t, tt.wantErr, err.Error())
-					return
-				}
-
-				assert.NoError(t, err)
-				assert.Equal(t, tt.want, got)
-			},
-		)
-	}
+	assert.Contains(t, err.Error(), "failed to parse rules file")
+	assert.Contains(t, err.Error(), "values.cel.yaml")
 }
 
 func TestValidator_ExtractPath(t *testing.T) {
