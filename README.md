@@ -11,8 +11,29 @@ A Helm plugin that uses Common Expression Language (CEL) to validate values. Ins
 
 ## Installation
 
+### Using Helm Plugin Manager
 ```bash
 helm plugin install https://github.com/idsulik/helm-cel
+```
+
+### Using Docker
+```bash
+# Pull the image
+docker pull idsulik/helm-cel:latest # main branch
+docker pull idsulik/helm-cel:2.1.2  # specific version
+
+# Run validation
+docker run --rm -v $(pwd):/charts idsulik/helm-cel validate /charts/mychart
+
+# Generate validation rules
+docker run --rm -v $(pwd):/charts idsulik/helm-cel generate /charts/mychart
+```
+
+### Building from Source
+```bash
+git clone https://github.com/idsulik/helm-cel
+cd helm-cel
+make install
 ```
 
 ## Usage
