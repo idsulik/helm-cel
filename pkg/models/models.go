@@ -20,16 +20,23 @@ type ValidationRules struct {
 
 // ValidationResult represents the outcome of validation
 type ValidationResult struct {
-	Errors   []*ValidationError
-	Warnings []*ValidationError
+	Errors   []*ValidationError `json:"errors" yaml:"errors"`
+	Warnings []*ValidationError `json:"warnings" yaml:"warnings"`
 }
 
 // ValidationError represents a validation failure
 type ValidationError struct {
-	Description string
-	Expression  string
-	Value       any
-	Path        string
+	Description string `json:"description" yaml:"description"`
+	Expression  string `json:"expression" yaml:"expression"`
+	Value       any    `json:"value" yaml:"value"`
+	Path        string `json:"path,omitempty" yaml:"path,omitempty"`
+}
+
+// ValidationOutput is used for structured output in JSON/YAML format
+type ValidationOutput struct {
+	HasErrors   bool              `json:"has_errors" yaml:"has_errors"`
+	HasWarnings bool              `json:"has_warnings" yaml:"has_warnings"`
+	Result      *ValidationResult `json:"result" yaml:"result"`
 }
 
 func (vr *ValidationResult) HasErrors() bool {

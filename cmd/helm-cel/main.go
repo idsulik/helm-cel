@@ -1,13 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/idsulik/helm-cel/pkg/generator"
+	"github.com/idsulik/helm-cel/pkg/models"
 	"github.com/idsulik/helm-cel/pkg/validator"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -17,8 +20,9 @@ var (
 	outputFile     string
 
 	// Flags for validate command
-	valuesFiles []string
-	rulesFiles  []string
+	valuesFiles  []string
+	rulesFiles   []string
+	outputFormat string
 )
 
 const (
@@ -26,7 +30,9 @@ const (
 	validateLong  = `A Helm plugin to validate values.yaml using CEL expressions defined in .cel.yaml files.
 Example using defaults: helm cel validate ./mychart
 Example with specific values: helm cel validate ./mychart -v values1.yaml -v values2.yaml
-Example with multiple files: helm cel validate ./mychart -v prod.yaml,staging.yaml -r rules1.cel.yaml,rules2.cel.yaml`
+Example with multiple files: helm cel validate ./mychart -v prod.yaml,staging.yaml -r rules1.cel.yaml,rules2.cel.yaml
+Example with JSON output: helm cel validate ./mychart -o json
+Example with YAML output: helm cel validate ./mychart -o yaml`
 
 	generateShort = "Generate CEL validation rules from values.yaml"
 	generateLong  = `Generate values.cel.yaml file with validation rules based on the structure of values.yaml.
@@ -73,6 +79,13 @@ func init() {
 		[]string{"values.cel.yaml"},
 		"Rules files to validate against (comma-separated or multiple -r flags)",
 	)
+	validateCmd.Flags().StringVarP(
+		&outputFormat,
+		"output",
+		"o",
+		"text",
+		"Output format: text, json, or yaml",
+	)
 
 	generateCmd.Flags().BoolVarP(&forceOverwrite, "force", "f", false, "Force overwrite existing values.cel.yaml")
 	generateCmd.Flags().StringVarP(
@@ -116,18 +129,53 @@ func runValidator(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	if result.HasErrors() {
-		return result
+	output := models.ValidationOutput{
+		HasErrors:   result.HasErrors(),
+		HasWarnings: len(result.Warnings) > 0,
+		Result:      result,
 	}
 
-	if len(result.Warnings) > 0 {
-		fmt.Println(result.Error())
-		fmt.Println("-------------------------------------------------")
-		fmt.Println("⚠️✅ Values validation successful with warnings!")
-	} else {
-		fmt.Println("✅ Values validation successful!")
+	switch outputFormat {
+	case "json":
+		if err := outputJson(output); err != nil {
+			return err
+		}
+	case "yaml":
+		if err := outputYaml(output); err != nil {
+			return err
+		}
+	default:
+		if result.HasErrors() {
+			return result
+		}
+
+		if len(result.Warnings) > 0 {
+			fmt.Println(result.Error())
+			fmt.Println("-------------------------------------------------")
+			fmt.Println("⚠️✅ Values validation successful with warnings!")
+		} else {
+			fmt.Println("✅ Values validation successful!")
+		}
 	}
 
+	return nil
+}
+
+func outputJson(output models.ValidationOutput) error {
+	json, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal output to JSON: %v", err)
+	}
+	fmt.Println(string(json))
+	return nil
+}
+
+func outputYaml(output models.ValidationOutput) error {
+	yaml, err := yaml.Marshal(output)
+	if err != nil {
+		return fmt.Errorf("failed to marshal output to YAML: %v", err)
+	}
+	fmt.Println(string(yaml))
 	return nil
 }
 

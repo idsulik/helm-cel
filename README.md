@@ -51,12 +51,17 @@ Options:
                      Defaults to values.yaml
 --rules-file, -r     Rules files to validate against (comma-separated or multiple flags)
                      Defaults to values.cel.yaml
+--output, -o         Output format: text, json, or yaml
+                     Defaults to text
 ```
 
 Example with custom files:
 ```bash
 # Using single values and rules files
 helm cel validate ./mychart --values-file prod.values.yaml --rules-file prod.cel.yaml
+
+# Using JSON output format
+helm cel validate ./mychart -o json
 
 # Using multiple values files (later files take precedence)
 helm cel validate ./mychart --values-file common.yaml --values-file prod.yaml
@@ -208,6 +213,61 @@ Found 1 warning(s):
 If all rules pass, you'll see a success message:
 ```
 ✅ Values validation successful!
+```
+
+### Structured Output Formats
+
+You can output validation results in JSON or YAML format for integration with CI/CD pipelines:
+
+```bash
+# JSON output
+helm cel validate ./mychart -o json
+
+# YAML output
+helm cel validate ./mychart -o yaml
+```
+
+JSON output example:
+```json
+{
+  "has_errors": true,
+  "has_warnings": true,
+  "result": {
+    "errors": [
+      {
+        "description": "replicaCount must be at least 1",
+        "expression": "values.replicaCount >= 1",
+        "value": 0,
+        "path": "replicaCount"
+      }
+    ],
+    "warnings": [
+      {
+        "description": "service port should be between 1 and 65535",
+        "expression": "values.service.port >= 1 && values.service.port <= 65535",
+        "value": 80801,
+        "path": "service.port"
+      }
+    ]
+  }
+}
+```
+
+YAML output example:
+```yaml
+has_errors: true
+has_warnings: true
+result:
+  errors:
+  - description: replicaCount must be at least 1
+    expression: values.replicaCount >= 1
+    value: 0
+    path: replicaCount
+  warnings:
+  - description: service port should be between 1 and 65535
+    expression: values.service.port >= 1 && values.service.port <= 65535
+    value: 80801
+    path: service.port
 ```
 
 ## Development
