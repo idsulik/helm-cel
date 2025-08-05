@@ -140,9 +140,19 @@ func runValidator(_ *cobra.Command, args []string) error {
 		if err := outputJson(output); err != nil {
 			return err
 		}
+		if result.HasErrors() {
+			os.Exit(1)
+		} else if len(result.Warnings) > 0 {
+			os.Exit(2)
+		}
 	case "yaml":
 		if err := outputYaml(output); err != nil {
 			return err
+		}
+		if result.HasErrors() {
+			os.Exit(1)
+		} else if len(result.Warnings) > 0 {
+			os.Exit(2)
 		}
 	default:
 		if result.HasErrors() {
@@ -153,6 +163,8 @@ func runValidator(_ *cobra.Command, args []string) error {
 			fmt.Println(result.Error())
 			fmt.Println("-------------------------------------------------")
 			fmt.Println("⚠️✅ Values validation successful with warnings!")
+			// Exit with code 2 for warnings to distinguish from pure success
+			os.Exit(2)
 		} else {
 			fmt.Println("✅ Values validation successful!")
 		}

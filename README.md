@@ -215,6 +215,16 @@ If all rules pass, you'll see a success message:
 ✅ Values validation successful!
 ```
 
+### Exit Codes
+
+The helm-cel plugin uses different exit codes to indicate the validation result, making it easy to integrate with CI/CD pipelines:
+
+- **Exit Code 0**: Validation successful (no errors, no warnings)
+- **Exit Code 1**: Validation failed with errors
+- **Exit Code 2**: Validation successful with warnings only
+
+This allows your pipeline scripts to handle different scenarios appropriately:
+
 ### Structured Output Formats
 
 You can output validation results in JSON or YAML format for integration with CI/CD pipelines:
