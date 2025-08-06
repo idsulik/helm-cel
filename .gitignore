@@ -26,3 +26,4 @@ go.work.sum
 
 .idea
 tmp
+helm-cel
