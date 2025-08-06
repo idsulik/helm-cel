@@ -81,7 +81,10 @@ echo "ARCHIVE: ${ARCHIVE}"
 if [ -n "$HELM_CEL_PLUGIN_DIR" ]; then
   # Development mode: DIR override
   echo "Development mode: overrinding DIR with ${HELM_CEL_PLUGIN_DIR}."
-  HELM_PLUGIN_DIR="$HELM_CEL_PLUGIN_DIR"
+  HELM_PLUGIN_DIR="$HELM_CEL_PLUGIN_DIR"  
+fi
+if [ -z "$HELM_PLUGIN_DIR" ]; then
+  HELM_PLUGIN_DIR="${HELM_PLUGIN_HOME:-$HOME/.local/share/helm/plugins}/helm-cel"
 fi
 echo "DIR:     ${HELM_PLUGIN_DIR}"
 
