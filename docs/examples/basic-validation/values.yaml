@@ -1,0 +1,21 @@
+# Example values file for basic validation
+
+replicaCount: 2
+
+image:
+  repository: nginx
+  tag: "1.21.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "50m"
+  limits:
+    memory: "128Mi"
+    cpu: "100m"
+

@@ -1,0 +1,51 @@
+# Example: Basic Validation Rules
+# This demonstrates simple validation rules without using named expressions
+
+rules:
+  # Basic existence checks
+  - expr: 'has(values.replicaCount)'
+    desc: "replicaCount must be defined"
+  
+  - expr: 'has(values.image)'
+    desc: "image configuration is required"
+  
+  - expr: 'has(values.image.repository)'
+    desc: "image.repository must be defined"
+  
+  - expr: 'has(values.image.tag)'
+    desc: "image.tag must be defined"
+  
+  # Type validations
+  - expr: 'type(values.replicaCount) == int'
+    desc: "replicaCount must be an integer"
+  
+  - expr: 'type(values.image.repository) == string'
+    desc: "image.repository must be a string"
+  
+  - expr: 'type(values.image.tag) == string'
+    desc: "image.tag must be a string"
+  
+  # Value validations
+  - expr: 'values.replicaCount > 0'
+    desc: "replicaCount must be greater than 0"
+  
+  - expr: 'values.replicaCount <= 10'
+    desc: "replicaCount must not exceed 10"
+  
+  - expr: 'values.image.repository != ""'
+    desc: "image.repository cannot be empty"
+  
+  - expr: 'values.image.tag != ""'
+    desc: "image.tag cannot be empty"
+  
+  - expr: '!values.image.tag.endsWith("latest")'
+    desc: "image tag 'latest' is not recommended"
+    severity: warning
+  
+  # Service validation (if present)
+  - expr: '!has(values.service) || values.service.port >= 1'
+    desc: "service.port must be at least 1 if service is defined"
+  
+  - expr: '!has(values.service) || values.service.port <= 65535'
+    desc: "service.port must not exceed 65535 if service is defined"
+
