@@ -1,0 +1,62 @@
+# Example: Parameterized Expressions
+# This file demonstrates how to use parameterized expressions for reusable validation logic
+
+expressions:
+  # Basic field existence check
+  hasField: 'has($0)'
+  
+  # Field with non-empty value
+  hasNonEmpty: 'has($0) && $0 != ""'
+  
+  # Range validation (min, max)
+  inRange: '$0 >= $1 && $0 <= $2'
+  
+  # Port validation (1-65535)
+  validPort: '$0 >= 1 && $0 <= 65535'
+  
+  # NodePort validation (30000-32767)
+  validNodePort: '$0 >= 30000 && $0 <= 32767'
+  
+  # Type checks
+  isString: 'type($0) == string'
+  isInt: 'type($0) == int'
+  isBool: 'type($0) == bool'
+  
+  # Pattern matching
+  matchesPattern: '$0.matches($1)'
+  
+  # Combined validation: field exists and is in valid port range
+  hasValidPort: 'has($0) && ${validPort($0)}'
+
+rules:
+  # Service configuration validation
+  - expr: '${hasField(values.service)}'
+    desc: "service configuration is required"
+  
+  - expr: '${hasValidPort(values.service.port)}'
+    desc: "service.port must be defined and in valid range (1-65535)"
+  
+  - expr: '${isString(values.service.type)}'
+    desc: "service.type must be a string"
+  
+  # Replica count validation
+  - expr: '${isInt(values.replicaCount)}'
+    desc: "replicaCount must be an integer"
+  
+  - expr: '${inRange(values.replicaCount, 1, 10)}'
+    desc: "replicaCount must be between 1 and 10"
+  
+  # Image configuration validation
+  - expr: '${hasNonEmpty(values.image.repository)}'
+    desc: "image.repository must be set and not empty"
+  
+  - expr: '${hasNonEmpty(values.image.tag)}'
+    desc: "image.tag must be set and not empty"
+  
+  # Resource validation
+  - expr: '${matchesPattern(values.resources.requests.memory, "^[0-9]+(Mi|Gi)$")}'
+    desc: "resources.requests.memory must be in Mi or Gi format"
+  
+  - expr: '${matchesPattern(values.resources.requests.cpu, "^[0-9]+m$")}'
+    desc: "resources.requests.cpu must be in millicores format (e.g., 100m)"
+

@@ -1,0 +1,54 @@
+# Example: Simple Named Expressions (without parameters)
+# This demonstrates using named expressions for reusable validation patterns
+
+expressions:
+  # Port range validation
+  portRange: 'values.service.port >= 1 && values.service.port <= 65535'
+  
+  # NodePort range validation
+  nodePortRange: 'values.service.nodePort >= 30000 && values.service.nodePort <= 32767'
+  
+  # Valid service types
+  validServiceType: 'values.service.type in ["ClusterIP", "NodePort", "LoadBalancer"]'
+  
+  # Resource patterns
+  memoryPattern: 'values.resources.requests.memory.matches("^[0-9]+(Mi|Gi)$")'
+  cpuPattern: 'values.resources.requests.cpu.matches("^[0-9]+m$")'
+  
+  # Image validation
+  noLatestTag: '!values.image.tag.endsWith("latest")'
+  hasImageTag: 'has(values.image.tag) && values.image.tag != ""'
+
+rules:
+  # Service validation
+  - expr: 'has(values.service)'
+    desc: "service configuration is required"
+  
+  - expr: '${portRange}'
+    desc: "service port must be between 1 and 65535"
+  
+  - expr: '${validServiceType}'
+    desc: "service type must be ClusterIP, NodePort, or LoadBalancer"
+  
+  - expr: 'values.service.type == "NodePort" ? ${nodePortRange} : true'
+    desc: "nodePort must be between 30000 and 32767 when type is NodePort"
+  
+  # Replica validation
+  - expr: 'values.replicaCount >= 1 && values.replicaCount <= 10'
+    desc: "replicaCount must be between 1 and 10"
+  
+  # Image validation
+  - expr: '${hasImageTag}'
+    desc: "image tag must be specified"
+  
+  - expr: '${noLatestTag}'
+    desc: "image tag 'latest' is not allowed"
+    severity: warning
+  
+  # Resource validation
+  - expr: '${memoryPattern}'
+    desc: "memory must be specified in Mi or Gi format"
+  
+  - expr: '${cpuPattern}'
+    desc: "cpu must be specified in millicores format (e.g., 100m)"
+
