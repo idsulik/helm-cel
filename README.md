@@ -280,6 +280,12 @@ result:
     path: service.port
 ```
 
+## Who's Using Helm CEL?
+
+We'd love to know if you're using helm-cel! Companies and individuals using this plugin can add themselves to our [ADOPTERS.md](ADOPTERS.md) file.
+
+**Are you using helm-cel in production or development?** Help us understand the community by [adding your organization](ADOPTERS.md#how-to-add-your-organization) to the adopters list. It only takes a minute and helps the project grow! 🚀
+
 ## Development
 
 Requirements:
